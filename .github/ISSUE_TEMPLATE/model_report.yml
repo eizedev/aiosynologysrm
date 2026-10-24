@@ -73,7 +73,7 @@ body:
     id: diagnostics
     attributes:
       label: Output of `aiosynologysrm-diagnostics <router> --user <admin>`
-      description: It contains no addresses or names; paste it as it is.
+      description: It contains no addresses or names (see the README); read it, then paste it.
       render: json
   - type: textarea
     id: notes

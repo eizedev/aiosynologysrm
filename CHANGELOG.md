@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `aiosynologysrm-diagnostics --no-counts` and `collect_diagnostics(client, counts=False)` leave
+  out how many items each getter returned.
+- The bug report form asks for the diagnostics output; the README lists exactly what it contains.
+
 ## [0.4.0] - 2026-10-24
 
 ### Added

@@ -83,10 +83,11 @@ def _error(err: SrmError) -> str:
     return f"{type(err).__name__}{code}"
 
 
-async def collect_diagnostics(client: SrmClient) -> dict[str, Any]:
+async def collect_diagnostics(client: SrmClient, *, counts: bool = True) -> dict[str, Any]:
     """Run every getter once and describe what came back, without any of its values.
 
-    Getters the router does not offer are reported as unsupported and not called.
+    Getters the router does not offer are reported as unsupported and not called. With
+    ``counts=False`` the number of items per getter is left out.
     """
     report: dict[str, Any] = {"library": __version__}
     try:
@@ -122,7 +123,10 @@ async def collect_diagnostics(client: SrmClient) -> dict[str, Any]:
         except SrmError as err:
             getters[name] = {"result": _error(err)}
             continue
-        getters[name] = {"result": "ok", "count": len(items), **_shape(items)}
+        entry: dict[str, Any] = {"result": "ok"}
+        if counts:
+            entry["count"] = len(items)
+        getters[name] = {**entry, **_shape(items)}
     report["getters"] = getters
     return report
 
@@ -142,6 +146,9 @@ def _parser() -> argparse.ArgumentParser:
     tls.add_argument("--fingerprint", help="SHA-256 of the router's certificate, hex")
     tls.add_argument("--insecure", action="store_true", help="do not check the certificate")
     parser.add_argument("--timeout", type=float, default=30.0, help="seconds per request")
+    parser.add_argument(
+        "--no-counts", action="store_true", help="leave out how many items each getter returned"
+    )
     return parser
 
 
@@ -179,7 +186,7 @@ async def _run(
             session_name="aiosynologysrm-diagnostics",
         ) as client,
     ):
-        return await collect_diagnostics(client)
+        return await collect_diagnostics(client, counts=not args.no_counts)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

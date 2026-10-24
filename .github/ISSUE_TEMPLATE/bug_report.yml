@@ -44,3 +44,9 @@ body:
     attributes:
       label: Code and error (redacted)
       render: python
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Output of `aiosynologysrm-diagnostics <router> --user <admin>`
+      description: It contains no addresses or names (see the README); read it, then paste it.
+      render: json
