@@ -17,6 +17,7 @@ from aiosynologysrm import (
     SrmClient,
     SrmConnectionError,
     SrmError,
+    SrmResponseError,
     SrmTimeoutError,
     SrmTwoFactorRequiredError,
 )
@@ -208,3 +209,65 @@ async def test_codes_that_need_the_user_are_remembered(
         with pytest.raises(SrmAuthenticationError):
             await client.get_system_info()
     assert _logins(fake) == 1
+
+
+async def test_an_unreachable_router_costs_one_catalog_attempt_per_round(
+    http: aiohttp.ClientSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = SrmClient("192.0.2.1", "u", "p", session=http, use_https=False, timeout=1)
+    sent: list[str] = []
+
+    async def post(cgi: str, data: Any) -> Any:
+        sent.append(cgi)
+        await asyncio.sleep(0.01)
+        raise SrmTimeoutError("No answer within the timeout")
+
+    monkeypatch.setattr(client, "_post", post)
+    results = await asyncio.gather(
+        *(client.get_system_info() for _ in range(6)), return_exceptions=True
+    )
+    assert all(isinstance(r, SrmTimeoutError) for r in results)
+    assert sent == ["query.cgi"]
+    with pytest.raises(SrmTimeoutError):
+        await client.get_system_info()  # the next round tries again
+    assert sent == ["query.cgi", "query.cgi"]
+
+
+async def test_concurrent_reads_share_one_failing_login(
+    fake: FakeSrm, make_client: MakeClient
+) -> None:
+    fake.login_error = 117  # not remembered, so only sharing keeps this at one attempt
+    client = make_client()
+    await client.get_catalog()
+    results = await asyncio.gather(
+        *(client.get_system_info() for _ in range(4)), return_exceptions=True
+    )
+    assert all(type(r) is SrmApiError for r in results)
+    assert _logins(fake) == 1
+
+
+async def test_login_again_logs_out_the_old_session(fake: FakeSrm, make_client: MakeClient) -> None:
+    client = make_client()
+    await client.login()
+    await client.login()
+    assert fake.logouts == 1
+    assert client.logged_in
+
+
+async def test_boolean_error_codes_are_not_numbers(fake: FakeSrm, make_client: MakeClient) -> None:
+    fake.raw_body = b'{"success": false, "error": {"code": true}}'
+    with pytest.raises(SrmResponseError):
+        await make_client().login()
+
+
+async def test_login_waits_for_a_login_in_progress(fake: FakeSrm, make_client: MakeClient) -> None:
+    client = make_client()
+    await client.get_catalog()
+    fake.delay = 0.05
+    first = asyncio.create_task(client.get_system_info())  # starts the automatic login
+    await asyncio.sleep(0.01)
+    await client.login()
+    await first
+    assert client.logged_in
+    assert _logins(fake) == 2
+    assert fake.logouts == 1  # the session the automatic login opened is closed again

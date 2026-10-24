@@ -106,7 +106,10 @@ router, because the access point does not report them.
 
 A mesh point cannot be managed directly: it has no SRM interface of its own, only a few actions in
 the main router's SRM. Connect to the main router; it reports the mesh points
-(`get_mesh_nodes()`) and which node each client uses. Mesh setups are untested otherwise: the
+(`get_mesh_nodes()`) and which node each client uses. A mesh node carries no serial number or MAC
+address in the recorded answers, and `node_id` is assigned per router, so until a mesh setup is
+checked, identify a mesh point by the router's serial number plus `node_id` and expect that to
+change. Mesh setups are untested otherwise: the
 fixtures come from a router and a standalone access point
 ([#12](https://github.com/eizedev/aiosynologysrm/issues/12)).
 

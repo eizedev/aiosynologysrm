@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import ipaddress
 import json
 import logging
@@ -215,10 +216,13 @@ class SrmClient:
         self._timeout = aiohttp.ClientTimeout(total=timeout)
         self._session_name = session_name
         self._sid: str | None = None
-        self._login_lock = asyncio.Lock()
         self._semaphore = asyncio.Semaphore(max(1, max_concurrency))
         self._catalog: dict[str, Mapping[str, Any]] | None = None
-        self._catalog_lock = asyncio.Lock()
+        # One shared attempt each for the catalog and the login: concurrent callers wait for it
+        # and get its result or its error, so an unreachable router or a failing login costs one
+        # request per round, not one per call.
+        self._catalog_attempt: asyncio.Future[Mapping[str, Mapping[str, Any]]] | None = None
+        self._login_attempt: asyncio.Future[None] | None = None
         self._auth_version: int | None = None
         # The failed login's class, code and API; a fresh exception is raised from it each time,
         # so no traceback (with the password in a frame) is kept or grows.
@@ -296,7 +300,7 @@ class SrmClient:
     def _error_code(envelope: Mapping[str, Any]) -> int:
         error = envelope.get("error")
         code = error.get("code") if isinstance(error, Mapping) else None
-        if not isinstance(code, int):
+        if not isinstance(code, int) or isinstance(code, bool):
             raise SrmResponseError("Error response without a numeric code")
         return code
 
@@ -306,11 +310,26 @@ class SrmClient:
         This is also the way to retry after a failed login, for example after an auto block
         expired, or with a fresh two-factor code once a session ended.
         """
-        async with self._login_lock:
-            self._login_failure = None
-            if otp_code:
-                self._otp_code = otp_code
-            await self._login_or_remember()
+        if self._login_attempt is not None:  # let a login in progress finish first
+            with contextlib.suppress(SrmError):
+                await asyncio.shield(self._login_attempt)
+        self._login_failure = None
+        if otp_code:
+            self._otp_code = otp_code
+        previous = self._sid
+        await self._shared_login()
+        if previous is not None and previous != self._sid:
+            await self._logout_sid(previous)  # do not leave the replaced session open
+
+    async def _shared_login(self) -> None:
+        if self._login_attempt is None:
+            self._login_attempt = asyncio.ensure_future(self._login_or_remember())
+        attempt = self._login_attempt
+        try:
+            await asyncio.shield(attempt)
+        finally:
+            if attempt.done() and self._login_attempt is attempt:
+                self._login_attempt = None
 
     async def _login_or_remember(self) -> None:
         try:
@@ -373,34 +392,34 @@ class SrmClient:
 
     async def logout(self) -> None:
         """End the session; errors are ignored because the session expires anyway."""
-        async with self._login_lock:
-            sid, self._sid = self._sid, None
-            if sid is None:
-                return
-            try:
-                await self._post(
-                    "auth.cgi",
-                    {
-                        "api": AUTH_API,
-                        "version": str(self._auth_version or AUTH_VERSIONS[0]),
-                        "method": "logout",
-                        "session": self._session_name,
-                        "_sid": sid,
-                    },
-                )
-            except SrmError:
-                _LOGGER.debug("Logout from %s failed, ignored", self._base_url)
+        sid, self._sid = self._sid, None
+        if sid is not None:
+            await self._logout_sid(sid)
+
+    async def _logout_sid(self, sid: str) -> None:
+        try:
+            await self._post(
+                "auth.cgi",
+                {
+                    "api": AUTH_API,
+                    "version": str(self._auth_version or AUTH_VERSIONS[0]),
+                    "method": "logout",
+                    "session": self._session_name,
+                    "_sid": sid,
+                },
+            )
+        except SrmError:
+            _LOGGER.debug("Logout from %s failed, ignored", self._base_url)
 
     async def _ensure_login(self, stale_sid: str | None = None) -> str:
-        async with self._login_lock:
-            if self._login_failure is not None:
-                kind, code, api = self._login_failure
-                raise kind(code, api)
-            if self._sid is None or self._sid == stale_sid:
-                await self._login_or_remember()
-            if self._sid is None:  # pragma: no cover - _login either sets it or raises
-                raise SrmResponseError("Login answer has no session id")
-            return self._sid
+        if self._login_failure is not None:
+            kind, code, api = self._login_failure
+            raise kind(code, api)
+        if self._sid is None or self._sid == stale_sid:
+            await self._shared_login()
+        if self._sid is None:  # pragma: no cover - _login either sets it or raises
+            raise SrmResponseError("Login answer has no session id")
+        return self._sid
 
     def clear_catalog(self) -> None:
         """Forget the cached API catalog, e.g. after a firmware update; the next call reloads it."""
@@ -409,21 +428,28 @@ class SrmClient:
 
     async def get_catalog(self) -> Mapping[str, Mapping[str, Any]]:
         """Return the router's API catalog (cached; SRM answers it without login)."""
-        async with self._catalog_lock:
-            return await self._load_catalog()
+        if self._catalog is not None:
+            return self._catalog
+        if self._catalog_attempt is None:
+            self._catalog_attempt = asyncio.ensure_future(self._load_catalog())
+        attempt = self._catalog_attempt
+        try:
+            return await asyncio.shield(attempt)
+        finally:
+            if attempt.done() and self._catalog_attempt is attempt:
+                self._catalog_attempt = None
 
     async def _load_catalog(self) -> Mapping[str, Mapping[str, Any]]:
-        if self._catalog is None:
-            envelope = await self._post(
-                "query.cgi",
-                {"api": INFO_API, "version": "1", "method": "query", "query": "ALL"},
-            )
-            if not envelope["success"]:
-                raise SrmApiError(self._error_code(envelope), INFO_API)
-            data = envelope.get("data")
-            if not isinstance(data, Mapping):
-                raise SrmResponseError("API catalog is not an object")
-            self._catalog = {name: meta for name, meta in data.items() if isinstance(meta, Mapping)}
+        envelope = await self._post(
+            "query.cgi",
+            {"api": INFO_API, "version": "1", "method": "query", "query": "ALL"},
+        )
+        if not envelope["success"]:
+            raise SrmApiError(self._error_code(envelope), INFO_API)
+        data = envelope.get("data")
+        if not isinstance(data, Mapping):
+            raise SrmResponseError("API catalog is not an object")
+        self._catalog = {name: meta for name, meta in data.items() if isinstance(meta, Mapping)}
         return self._catalog
 
     async def supports(self, target: ReadSpec | Callable[[], Awaitable[object]]) -> bool:

@@ -177,3 +177,13 @@ async def test_fingerprint_with_a_given_context(
     assert https_server.port is not None
     fingerprint = await get_certificate_fingerprint(HOST, https_server.port, ssl_context=context)
     assert fingerprint == leaf_fingerprint
+
+
+async def test_fingerprint_with_a_verifying_context_reports_an_untrusted_certificate(
+    https_server: TestServer,
+) -> None:
+    assert https_server.port is not None
+    with pytest.raises(SrmCertificateError):
+        await get_certificate_fingerprint(
+            HOST, https_server.port, ssl_context=ssl.create_default_context()
+        )

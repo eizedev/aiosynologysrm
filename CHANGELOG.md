@@ -10,12 +10,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
-- `helpers.locate_clients()` with `DeviceView` and `ClientLocation`: combines the client lists of a
-  router and its access points into one answer per client (device, Wi-Fi or wired, radio,
-  signal, mesh node, the device's own entry), trusting each device's own Wi-Fi list over the
-  router's view and the newest association after roaming. `incomplete` marks unconfirmed
-  locations from incomplete input (a Wi-Fi list missing, a truncated device list), so a tracker
-  keeps the last confirmed location instead of flapping.
+- `helpers.locate_clients()` with `SourceView`, `ClientLocation` and `Basis`: combines the client
+  lists of a router and its access points into one answer per client (source device, Wi-Fi or
+  wired, radio, signal, mesh node, the device's own entry). Each device's own Wi-Fi list wins
+  over the router's view, the newest association wins after roaming, and `incomplete` marks
+  results from incomplete input (a device unreachable, a Wi-Fi list missing, a device list
+  truncated), so a tracker keeps the last trusted location instead of flapping.
 - `get_certificate_fingerprint(..., ssl_context=...)` to reuse an existing non-verifying context.
 - README: which error maps to which Home Assistant reaction.
 
@@ -23,21 +23,26 @@ All notable changes to this project are documented here. The format follows
 
 - **Breaking:** `SrmCertificateError` is no longer a `SrmConnectionError`, and `SrmBlockedError`
   no longer a `SrmAuthenticationError`: retrying a changed certificate does not help, and a
-  blocked address does not mean wrong credentials.
-- Only login codes 400-402 raise `SrmAuthenticationError`; other login codes are plain
-  `SrmApiError`s and not remembered, because they can come from a restarting router.
+  blocked address does not mean wrong credentials. Only a failed certificate verification or a
+  fingerprint mismatch raises `SrmCertificateError`; other TLS errors (an aborted handshake while
+  the router restarts) are `SrmConnectionError`s.
+- `SrmAuthenticationError` is raised for the login codes that need the user (400-402, 408-410)
+  and is remembered; other login codes are plain `SrmApiError`s and not remembered, because they
+  can come from a restarting router.
+- Concurrent calls share one catalog request and one login attempt and get the same result or
+  error: an unreachable router costs one timeout per round instead of one per call, and a
+  failing login one attempt.
+- `login()` on a client that is logged in closes the replaced session; `logout()` ignores every
+  `SrmError`.
 - When the router refuses a version its catalog offered (102-104), the client reads the catalog
   again once, so a firmware update does not leave it stuck.
-- Diagnostics respect a remembered failed login instead of trying again, and run the getters
-  concurrently (still limited by `max_concurrency`).
-- Only a failed certificate verification or a fingerprint mismatch raises `SrmCertificateError`;
-  other TLS errors (an aborted handshake while the router restarts) are `SrmConnectionError`s.
-- Login codes 408-410 (password expired or to be changed) are authentication errors, remembered
-  like 400-402. `logout()` ignores every `SrmError`.
-- Whole floats (`12.0`) are accepted as integers.
+- Diagnostics respect a remembered failed login instead of trying again, keep the report when one
+  call fails (also with a certificate error), and run the getters concurrently (still limited by
+  `max_concurrency`).
+- Whole floats (`12.0`) are accepted as integers; a boolean error code is a response error.
 - The plain-HTTP warning is logged once per host.
-- Units measured: `Utilization` network rates are bytes per second, `load_*` the load averages
-  times 100.
+- Units measured against kernel counters: `Utilization` network rates are bytes per second,
+  `load_*` the load averages times 100.
 
 ## [0.5.0] - 2026-10-24
 

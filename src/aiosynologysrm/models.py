@@ -94,7 +94,7 @@ class UtilizationMemory(SrmModel):
 
 @dataclass(frozen=True, slots=True)
 class UtilizationNetwork(SrmModel):
-    """Current traffic of one interface in bytes per second (``total`` is the sum).
+    """Current traffic of one interface in bytes per second; ``device`` ``total`` is the sum.
 
     Checked against the kernel's interface counters on an RT2600ac and an MR2200ac (within about
     10 % averaged over a minute); a single value is a snapshot and can differ more.

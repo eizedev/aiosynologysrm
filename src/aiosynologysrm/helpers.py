@@ -31,8 +31,9 @@ from .models import NetworkDevice, NetworkDevices, UtilizationCpu
 
 __all__ = [
     "AddressScope",
+    "Basis",
     "ClientLocation",
-    "DeviceView",
+    "SourceView",
     "address_scope",
     "config_hash",
     "cpu_total_percent",
@@ -172,15 +173,22 @@ def config_hash(payloads: Iterable[Mapping[str, Any]], ignore: frozenset[str] = 
 
 
 @dataclass(frozen=True, slots=True)
-class DeviceView:
-    """What one SRM device reported, labelled with a name the caller chooses (unique)."""
+class SourceView:
+    """What one SRM device (router or access point) reported, under a name the caller chooses.
+
+    Pass a view for every device you expect, also when it could not be read: ``devices=None``
+    says it was unreachable, ``wifi=None`` that its Wi-Fi list is missing. Both make the result
+    ``incomplete``, so a missing access point cannot silently move its clients to the router.
+    """
 
     name: str
-    devices: NetworkDevices
-    """The device's ``get_network_devices()``."""
+    devices: NetworkDevices | None
+    """The device's ``get_network_devices()``; ``None`` when it could not be read."""
     wifi: WifiDevices | None = None
-    """The device's ``get_wifi_devices()``, its own radios' clients; ``None`` when not available
-    (not read, or the read failed)."""
+    """The device's ``get_wifi_devices()``, its own radios' clients; ``None`` when not read."""
+
+
+Basis = Literal["wifi_list", "device_list", "offline"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -190,17 +198,18 @@ class ClientLocation:
     mac: str
     """Normalized, ``aa:bb:cc:dd:ee:ff``; :func:`normalize_mac` gives the same for SRM's values."""
     online: bool
-    """In a device's Wi-Fi list, or reported online by a device."""
-    device: str | None
-    """Name of the :class:`DeviceView` it is attached to; ``None`` when offline everywhere."""
+    """In a Wi-Fi list, or reported online by a device."""
+    source: str | None
+    """Name of the :class:`SourceView` it is attached to; ``None`` when offline everywhere."""
     connection: str | None
     """``wifi`` or ``ethernet``, as far as it is known."""
-    confirmed: bool
-    """``True`` when the client is in that device's own Wi-Fi list, the only reliable source."""
+    basis: Basis
+    """How the location was found: ``wifi_list`` (the device's own Wi-Fi list, the reliable
+    source), ``device_list`` (a device's client list, which can lag behind or be stale), or
+    ``offline`` (no device reports the client online)."""
     incomplete: bool
-    """``True`` when the location is not confirmed and the input was incomplete (a Wi-Fi list
-    missing, or a device list truncated): the client may really be elsewhere. A device tracker
-    should then keep its last confirmed location instead of moving the client."""
+    """A view was unreachable, lacked its Wi-Fi list or had a truncated device list: the client
+    may really be elsewhere. A device tracker should then keep the last location it trusted."""
     radio_type: str | None = None
     signal: int | None = None
     mesh_node_id: int | None = None
@@ -210,30 +219,34 @@ class ClientLocation:
     """The chosen device's own entry for the client (hostname, addresses), if it has one."""
 
 
-def locate_clients(views: Sequence[DeviceView]) -> dict[str, ClientLocation]:
+def locate_clients(views: Sequence[SourceView]) -> dict[str, ClientLocation]:
     """Tell, for every client the devices know, which device it is attached to and how.
 
-    Pass the main router first, then standalone access points; view names must be unique. Rules:
+    Pass the main router first, then every access point you expect; view names must be unique.
+    Rules:
 
-    1. A client in a device's own Wi-Fi list is on that device, on that radio (``confirmed``).
-       This is the only reliable source: the router sees the Wi-Fi clients of a standalone access
-       point as wired devices, and its device list can still say ``wifi`` after a client roamed.
-       If several Wi-Fi lists name the client, the newest association (smallest
-       ``associate_up_time``) wins, then the stronger signal.
-    2. Otherwise the first device that lists the client online decides: a wired client, a Wi-Fi
-       client of a mesh point, or a ``wifi`` entry of the router that may be stale. Wired clients
-       behind an access point's LAN port cannot be told apart from those on the router.
-    3. A client no device reports online has ``online`` ``False`` and no ``device``.
+    1. A client in a device's own Wi-Fi list is on that device, on that radio (``wifi_list``).
+       The router sees the Wi-Fi clients of a standalone access point as wired devices, and its
+       client list can still say ``wifi`` after a client roamed. If several Wi-Fi lists name
+       the client, the newest association (smallest ``associate_up_time``) wins, then the
+       stronger signal.
+    2. Otherwise the first device that lists the client online decides (``device_list``): a
+       wired client, a Wi-Fi client of a mesh point, or a ``wifi`` entry that may be stale. The
+       radio is then SRM's ``band`` of that entry. Wired clients behind an access point's LAN
+       port cannot be told apart from those on the router.
+    3. A client no device reports online is ``offline`` and has no ``source``.
 
-    Entries without a valid MAC address are skipped. Measured on a router with one standalone
-    access point; mesh setups are untested.
+    ``incomplete`` is set on every result when any view was unreachable, lacked its Wi-Fi list
+    or had a truncated device list. Entries without a valid MAC address are skipped. Measured on
+    a router with one standalone access point; mesh setups are untested.
     """
     names = [view.name for view in views]
     if len(set(names)) != len(names):
-        msg = "every DeviceView needs its own name"
+        msg = "every SourceView needs its own name"
         raise ValueError(msg)
     incomplete = any(
-        view.wifi is None or view.devices.exceed_dev_list_max is True for view in views
+        view.devices is None or view.wifi is None or view.devices.exceed_dev_list_max is True
+        for view in views
     )
     wifi: dict[str, tuple[str, WifiDevice]] = {}
     for view in views:
@@ -243,7 +256,7 @@ def locate_clients(views: Sequence[DeviceView]) -> dict[str, ClientLocation]:
                 wifi[mac] = (view.name, item)
     seen: dict[str, list[tuple[str, NetworkDevice]]] = {mac: [] for mac in wifi}
     for view in views:
-        for device in view.devices.devices:
+        for device in view.devices.devices if view.devices else ():
             mac = normalize_mac(device.mac)
             if mac is not None:
                 seen.setdefault(mac, []).append((view.name, device))
@@ -286,10 +299,10 @@ def _locate(
         return ClientLocation(
             mac=mac,
             online=True,
-            device=name,
+            source=name,
             connection="wifi",
-            confirmed=True,
-            incomplete=False,
+            basis="wifi_list",
+            incomplete=incomplete,
             radio_type=item.radio_type,
             signal=item.signal,
             mesh_node_id=mesh_id,
@@ -301,22 +314,24 @@ def _locate(
         return ClientLocation(
             mac=mac,
             online=False,
-            device=None,
+            source=None,
             connection=None,
-            confirmed=False,
+            basis="offline",
             incomplete=incomplete,
             entry=entries[0][1] if entries else None,
         )
     name, entry = online
     mesh_id, mesh_name = _mesh(entry)
+    on_wifi = entry.connection == "wifi"
     return ClientLocation(
         mac=mac,
         online=True,
-        device=name,
+        source=name,
         connection=entry.connection,
-        confirmed=False,
+        basis="device_list",
         incomplete=incomplete,
-        signal=entry.signalstrength if entry.connection == "wifi" else None,
+        radio_type=entry.band if on_wifi else None,
+        signal=entry.signalstrength if on_wifi else None,
         mesh_node_id=mesh_id,
         mesh_node_name=mesh_name,
         entry=entry,

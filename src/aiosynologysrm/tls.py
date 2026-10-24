@@ -17,7 +17,7 @@ import hashlib
 import ssl
 
 from .client import DEFAULT_HTTPS_PORT, DEFAULT_TIMEOUT
-from .errors import SrmConnectionError, SrmTimeoutError
+from .errors import SrmCertificateError, SrmConnectionError, SrmTimeoutError
 
 
 async def get_certificate_fingerprint(
@@ -47,6 +47,9 @@ async def get_certificate_fingerprint(
             _, writer = await asyncio.open_connection(host, port, ssl=context, server_hostname=host)
     except TimeoutError as err:
         raise SrmTimeoutError("No answer within the timeout") from err
+    except ssl.SSLCertVerificationError as err:  # only with a verifying ssl_context
+        msg = f"Certificate not trusted ({type(err).__name__})"
+        raise SrmCertificateError(msg) from err
     except (OSError, ssl.SSLError) as err:
         msg = f"Connection failed ({type(err).__name__})"
         raise SrmConnectionError(msg) from err

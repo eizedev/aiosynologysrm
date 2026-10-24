@@ -174,8 +174,9 @@ interface's requests map 1:1. Values keep SRM's units and formats; `raw` holds t
 | `get_mesh_nodes()` | `SYNO.Mesh.Node.List` | the router and its mesh points |
 | `get_usb_volumes()` | `SYNO.Core.Storage.Volume` | USB storage: file system, size, free space |
 
-Anything derived is in `aiosynologysrm.helpers`, kept apart from the models on purpose: the
-classification of an address (`address_scope`: public, private, carrier-grade NAT), summed hit
+Anything derived is in `aiosynologysrm.helpers`, kept apart from the models on purpose:
+`locate_clients()` tells for each client which router or access point it is attached to, by Wi-Fi
+(which radio) or cable, from the lists of several devices; the classification of an address (`address_scope`: public, private, carrier-grade NAT), summed hit
 counters per rule (`hits_by_rule`), radio settings paired with their live state (`pair_radios`),
 durations and dates from SRM's text (`up_time`, `lease_remaining`, `firmware_date`), used space,
 and `config_hash()` to detect configuration changes from the models' `raw`.
@@ -212,7 +213,7 @@ Every error from talking to the router derives from `SrmError`; wrong arguments 
 | --- | --- | --- |
 | `SrmAuthenticationError` | wrong user or password, disabled account, no permission, expired password (400-402, 408-410) | `ConfigEntryAuthFailed` (reauth) |
 | `SrmTwoFactorRequiredError` | the account uses two-factor authentication; pass a fresh `otp_code` | `ConfigEntryAuthFailed`; use an account without 2FA |
-| `SrmBlockedError` | the router blocks logins from this address after failed attempts; credentials may be fine | repair issue, then `login()` once the block expired |
+| `SrmBlockedError` | the router blocks logins from this address after failed attempts; credentials may be fine | repair issue; call `login()` only after the user unblocked the address or the block expired (`get_auto_block().expire_day` days, `0` = never); every attempt counts towards the block |
 | `SrmCertificateError` | the certificate is not trusted or does not match the pinned fingerprint | reauth or repair: confirm the new fingerprint |
 | `SrmConnectionError` / `SrmTimeoutError` | the router could not be reached | `ConfigEntryNotReady` / `UpdateFailed` |
 | `SrmSessionError` | the router ended the session right after a new login | `UpdateFailed` |
