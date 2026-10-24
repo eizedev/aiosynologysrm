@@ -33,6 +33,7 @@ aiosynologysrm-diagnostics = "aiosynologysrm.diagnostics:main"
 
 [project.urls]
 Homepage = "https://github.com/eizedev/aiosynologysrm"
+Documentation = "https://aiosynologysrm.eize.dev/"
 Issues = "https://github.com/eizedev/aiosynologysrm/issues"
 Changelog = "https://github.com/eizedev/aiosynologysrm/blob/main/CHANGELOG.md"
 

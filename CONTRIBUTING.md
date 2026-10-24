@@ -65,7 +65,9 @@ uv run pytest --cov
 - **Models mirror SRM.** Name fields after SRM's keys (snake_case, see docs/design.md, "Data
   model"), keep SRM's units and formats, and put anything derived into `helpers.py`. Document a
   unit in the field's docstring only if you checked it on a router.
-- Update [docs/compatibility.md](docs/compatibility.md) and [CHANGELOG.md](CHANGELOG.md).
+- Update [docs/compatibility.md](docs/compatibility.md), the other pages in `docs/` where they
+  describe what you changed, and [CHANGELOG.md](CHANGELOG.md). `docs/` is the website at
+  https://aiosynologysrm.eize.dev/.
 - Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/)
   (`feat:`, `fix:`, `docs:`, ...).
 

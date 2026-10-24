@@ -40,8 +40,12 @@ uv run mypy                   # strict
 - **Units only when verified** on a router, and then in the field's docstring, not its name.
 - **Errors never carry secrets**: no URL, password, session id or response body in an exception or
   log message.
-- **Docs describe the current state**: update `README.md`, `docs/compatibility.md` and
-  `CHANGELOG.md` (Keep a Changelog, under `[Unreleased]`) in the same change.
+- **Docs describe the current state**: update the pages in `docs/` (the website), `README.md`
+  when the quick start or the device list changes, and `CHANGELOG.md` (Keep a Changelog, under
+  `[Unreleased]`) in the same change.
+- **Website**: `docs/` and `zensical.toml`, built by `.github/workflows/docs.yml` with the shared
+  design from eizedev/brand (`docs-site/`); `docs/assets/site.css` is copied in at build time and
+  not committed. Preview: see "Documentation websites" in eizedev/brand's README.
 - Commit messages follow Conventional Commits.
 
 ## Don'ts

@@ -5,7 +5,7 @@ How the library works and why. For what it supports, see [compatibility.md](comp
 ## Read-only by construction
 
 Every call the client is able to send is listed in
-[`reads.py`](../src/aiosynologysrm/reads.py). A `ReadSpec` refuses any method that is not a
+[`reads.py`](https://github.com/eizedev/aiosynologysrm/blob/main/src/aiosynologysrm/reads.py). A `ReadSpec` refuses any method that is not a
 read (`get`, `list`, `info`, `tablesget`), and `SrmClient.read()` refuses any spec that is not in
 that list. Through the public API, a write cannot be sent by accident.
 
@@ -97,7 +97,7 @@ requests (`max_concurrency`, default 2) so it does not swamp the router.
 - With `use_https=False` the password crosses the network unencrypted; the client logs a warning
   when it is created that way.
 - Test fixtures are real router answers made anonymous by
-  [`scripts/anonymize.py`](../scripts/anonymize.py). It works as an allowlist: every text field
+  [`scripts/anonymize.py`](https://github.com/eizedev/aiosynologysrm/blob/main/scripts/anonymize.py). It works as an allowlist: every text field
   is either fixed vocabulary that stays, an address (MAC, IPv4, IPv6, DUID, host name) that gets
   a stable placeholder, or a name that is replaced as a whole. An unclassified field stops the
   script. Port numbers, country codes and the time zone are replaced too, because together they
