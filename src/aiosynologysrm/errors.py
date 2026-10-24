@@ -18,6 +18,14 @@ class SrmTimeoutError(SrmConnectionError):
     """The router did not answer within the configured timeout."""
 
 
+class SrmCertificateError(SrmConnectionError):
+    """The router's TLS certificate failed verification or does not match the pinned fingerprint.
+
+    After a certificate renewal, fetch the new fingerprint with
+    :func:`aiosynologysrm.get_certificate_fingerprint` and confirm it before trusting it.
+    """
+
+
 class SrmResponseError(SrmError):
     """The router answered, but not with the expected structure."""
 
@@ -38,7 +46,18 @@ class SrmAuthenticationError(SrmApiError):
 
 
 class SrmTwoFactorRequiredError(SrmAuthenticationError):
-    """The account has two-factor authentication enabled and a code is needed."""
+    """The account has two-factor authentication enabled and a (new) code is needed.
+
+    A code is sent with one login only. When the session ends later, the next login needs a fresh
+    code, so unattended use needs an account without two-factor authentication.
+    """
+
+
+class SrmBlockedError(SrmAuthenticationError):
+    """The router blocks logins from this IP address (code 407), usually after failed attempts.
+
+    Retrying does not help until the block expires or is lifted in SRM's auto block settings.
+    """
 
 
 class SrmPermissionError(SrmApiError):

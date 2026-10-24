@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 from collections.abc import Mapping
+from ssl import SSLContext
 from types import TracebackType
 from typing import Any, Final, Self
 
@@ -14,6 +15,8 @@ import aiohttp
 from .errors import (
     SrmApiError,
     SrmAuthenticationError,
+    SrmBlockedError,
+    SrmCertificateError,
     SrmConnectionError,
     SrmNotAllowedError,
     SrmPermissionError,
@@ -93,6 +96,7 @@ _SESSION_ERRORS: Final = frozenset({106, 107, 119})  # expired, duplicate login,
 _UNSUPPORTED_ERRORS: Final = frozenset({102, 103, 104})  # no such API, method or version
 _PERMISSION_ERRORS: Final = frozenset({105, 117})
 _TWO_FACTOR_ERRORS: Final = frozenset({403, 404, 406})  # code needed, code wrong, 2FA enforced
+_BLOCKED_ERROR: Final = 407  # IP address blocked by auto block
 
 _ALLOWED: Final = frozenset((spec.api, spec.method) for spec in ALL_READS)
 
@@ -102,6 +106,12 @@ class SrmClient:
 
     The aiohttp session is passed in and never closed here, so applications such as Home
     Assistant can share theirs. Only calls from :mod:`aiosynologysrm.reads` can be sent.
+
+    ``ssl`` is passed to aiohttp: ``True`` verifies the certificate against the system's
+    certificate authorities, ``False`` skips verification, an ``ssl.SSLContext`` is used as given,
+    and an ``aiohttp.Fingerprint`` pins the router's certificate (see
+    :func:`aiosynologysrm.get_certificate_fingerprint`). ``otp_code`` is sent with the first login
+    only; see :class:`aiosynologysrm.SrmTwoFactorRequiredError`.
     """
 
     def __init__(
@@ -113,7 +123,7 @@ class SrmClient:
         session: aiohttp.ClientSession,
         port: int | None = None,
         use_https: bool = True,
-        verify_ssl: bool = True,
+        ssl: bool | SSLContext | aiohttp.Fingerprint = True,
         timeout: float = DEFAULT_TIMEOUT,
         otp_code: str | None = None,
         max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
@@ -126,9 +136,9 @@ class SrmClient:
         self._base_url = f"{'https' if use_https else 'http'}://{bracketed}:{port}/webapi"
         self._username = username
         self._password = password
-        self._otp_code = otp_code
+        self._otp_code: str | None = otp_code
         self._session = session
-        self._ssl = verify_ssl
+        self._ssl = ssl
         self._timeout = aiohttp.ClientTimeout(total=timeout)
         self._session_name = session_name
         self._sid: str | None = None
@@ -184,6 +194,9 @@ class SrmClient:
                         raise SrmResponseError("Response too large")
         except TimeoutError as err:
             raise SrmTimeoutError("No answer within the timeout") from err
+        except (aiohttp.ClientSSLError, aiohttp.ServerFingerprintMismatch) as err:
+            msg = f"Certificate not trusted ({type(err).__name__})"
+            raise SrmCertificateError(msg) from None
         except aiohttp.ClientError as err:
             # The original exception can carry the URL; keep only its type.
             msg = f"Connection failed ({type(err).__name__})"
@@ -236,13 +249,17 @@ class SrmClient:
             "format": "sid",
             "session": self._session_name,
         }
-        if self._otp_code:
-            form["otp_code"] = self._otp_code
+        # A code is valid once; never repeat it on a later login, right or wrong.
+        otp_code, self._otp_code = self._otp_code, None
+        if otp_code:
+            form["otp_code"] = otp_code
         envelope = await self._post("auth.cgi", form)
         if not envelope["success"]:
             code = self._error_code(envelope)
             if code in _TWO_FACTOR_ERRORS:
                 raise SrmTwoFactorRequiredError(code, AUTH_API)
+            if code == _BLOCKED_ERROR:
+                raise SrmBlockedError(code, AUTH_API)
             raise SrmAuthenticationError(code, AUTH_API)
         data = envelope.get("data")
         sid = data.get("sid") if isinstance(data, Mapping) else None

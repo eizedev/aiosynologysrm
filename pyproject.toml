@@ -41,6 +41,7 @@ dev = [
     "pytest-asyncio>=0.25",
     "pytest-cov>=6.0",
     "ruff>=0.11",
+    "trustme>=1.1",
 ]
 
 [tool.hatch.version]

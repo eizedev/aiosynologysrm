@@ -7,6 +7,8 @@ from .client import SrmClient
 from .errors import (
     SrmApiError,
     SrmAuthenticationError,
+    SrmBlockedError,
+    SrmCertificateError,
     SrmConnectionError,
     SrmError,
     SrmNotAllowedError,
@@ -46,6 +48,7 @@ from .network import (
     WanStatus,
 )
 from .reads import ReadSpec
+from .tls import get_certificate_fingerprint
 
 try:
     from ._version import __version__
@@ -75,6 +78,8 @@ __all__ = [
     "SecuritySettings",
     "SrmApiError",
     "SrmAuthenticationError",
+    "SrmBlockedError",
+    "SrmCertificateError",
     "SrmClient",
     "SrmConnectionError",
     "SrmError",
@@ -93,5 +98,6 @@ __all__ = [
     "WifiRadio",
     "__version__",
     "fingerprint",
+    "get_certificate_fingerprint",
     "normalize_mac",
 ]

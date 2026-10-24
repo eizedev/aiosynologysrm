@@ -11,9 +11,17 @@ All notable changes to this project are documented here. The format follows
 - `fingerprint()` is exported, for change detection on any list of models.
 - `SrmClient.clear_catalog()` forgets the cached API catalog, e.g. after a firmware update.
 - `AGENTS.md` with instructions for AI coding agents.
+- Certificate pinning: `ssl` accepts an `aiohttp.Fingerprint`, and `get_certificate_fingerprint()`
+  reads the SHA-256 fingerprint of a router's certificate. Checked on an RT2600ac and an MR2200ac.
+- `SrmCertificateError` for an untrusted certificate or a fingerprint mismatch.
+- `SrmBlockedError` for login error 407 (IP address blocked).
 
 ### Changed
 
+- **Breaking:** `verify_ssl` is replaced by `ssl` (`bool`, `ssl.SSLContext` or
+  `aiohttp.Fingerprint`). `verify_ssl=False` becomes `ssl=False`.
+- A two-factor code is sent with the first login only. A later login needs a fresh code and raises
+  `SrmTwoFactorRequiredError`; unattended use needs an account without two-factor authentication.
 - The login version is chosen from the router's catalog (3 or 2) instead of always 3.
 - A redirect answer names the likely cause (`use_https` or port).
 - Releases are only published from commits on `main`, after lint and type checks.

@@ -32,6 +32,7 @@ program.
 - [Why this library?](#why-this-library)
 - [Which devices work?](#which-devices-work)
 - [Quick start](#quick-start)
+- [Certificate and two-factor authentication](#certificate-and-two-factor-authentication)
 - [What it can read](#what-it-can-read)
 - [Errors](#errors)
 - [Documentation](#documentation)
@@ -90,7 +91,7 @@ async def main() -> None:
             "admin-user",
             "secret",
             session=session,
-            verify_ssl=False,  # SRM ships a self-signed certificate
+            ssl=False,  # SRM ships a self-signed certificate; better: pin it, see below
         ) as client:
             info = await client.get_system_info()
             print(info.model, info.firmware_version)
@@ -103,6 +104,27 @@ async def main() -> None:
 
 asyncio.run(main())
 ```
+
+## Certificate and two-factor authentication
+
+SRM ships a self-signed certificate, so the default `ssl=True` rejects it. Instead of switching
+verification off, pin the certificate: fetch its fingerprint once, let the user confirm it, store
+it and pass it on every connection.
+
+```python
+from aiosynologysrm import get_certificate_fingerprint
+
+fingerprint = await get_certificate_fingerprint("192.0.2.1")  # SHA-256, lowercase hex
+client = SrmClient(..., ssl=aiohttp.Fingerprint(bytes.fromhex(fingerprint)))
+```
+
+A renewed certificate then raises `SrmCertificateError` until the new fingerprint is confirmed.
+`ssl` also takes `False` or an `ssl.SSLContext`.
+
+Two-factor authentication works for interactive use only: `otp_code` is sent with the first login
+and never again. When the session ends, the next login raises `SrmTwoFactorRequiredError` and
+needs a fresh code. For unattended use (Home Assistant, scripts), create a dedicated administrator
+account without two-factor authentication.
 
 ## What it can read
 
@@ -143,7 +165,9 @@ Every error derives from `SrmError`. The ones you will meet most:
 | Error | Meaning |
 | --- | --- |
 | `SrmAuthenticationError` | wrong user or password, or the account is disabled |
-| `SrmTwoFactorRequiredError` | the account uses two-factor authentication; pass `otp_code` |
+| `SrmTwoFactorRequiredError` | the account uses two-factor authentication; pass a fresh `otp_code` |
+| `SrmBlockedError` | the router blocks logins from this IP address after failed attempts |
+| `SrmCertificateError` | the certificate is not trusted or does not match the pinned fingerprint |
 | `SrmUnsupportedError` | this router or firmware does not offer the requested data |
 | `SrmConnectionError` / `SrmTimeoutError` | the router could not be reached |
 
