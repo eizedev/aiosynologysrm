@@ -29,12 +29,12 @@ anonymize = _load()
 SAMPLE = {
     "mac": "a4:83:e7:12:34:56",
     "clid": "00:01:00:01:2c:aa:bb:cc:a4:83:e7:12:34:56",
-    "ip": "192.168.1.23",
+    "ip": "10.20.30.40",
     "ip6": "2a00:1234:5678:4200:a683:e7ff:fe12:3456",
     "other6": "2a00:1234:5678:4200::1",
     "guest6": "2a00:1234:5678:4207::2",
     "link": "fe80::a683:e7ff:fe12:3456",
-    "hostname": "Renes-MacBook",
+    "hostname": "Example-Laptop",
     "serial": "1930ABCDEF",
     "band": "5G",
 }
@@ -47,9 +47,9 @@ def test_everything_personal_is_replaced() -> None:
     for value in (
         "a4:83:e7",
         "2c:aa:bb:cc",
-        "192.168.1.23",
+        "10.20.30.40",
         "2a00:1234",
-        "renes-macbook",
+        "example-laptop",
         "1930abcdef",
     ):
         assert value not in text
@@ -89,8 +89,8 @@ def test_replacements_are_stable() -> None:
 def test_leak_detection() -> None:
     a = anonymize.Anonymizer()
     a.walk(SAMPLE)
-    assert anonymize.leaks({"note": "seen at 192.168.1.23"}, a) == ["192.168.1.23"]
-    assert anonymize.leaks({"hostname": "renes-macbook"}, a) == ["renes-macbook"]
+    assert anonymize.leaks({"note": "seen at 10.20.30.40"}, a) == ["10.20.30.40"]
+    assert anonymize.leaks({"hostname": "example-laptop"}, a) == ["example-laptop"]
     # a host name that equals an enumeration value is a generic word, not a leak
     b = anonymize.Anonymizer()
     b.walk({"hostname": "ipad"})
