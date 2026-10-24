@@ -23,6 +23,14 @@ from .errors import (
     SrmUnsupportedError,
 )
 from .firewall import FirewallRules, ForwardRule, PortForward, PortTrigger, SecuritySettings
+from .hardware import (
+    EthernetPort,
+    MeshNode,
+    UsbVolume,
+    WifiClient,
+    WifiRadio,
+    radios_from_api,
+)
 from .models import NetworkDevices, SystemInfo, Utilization
 from .network import (
     DhcpLease,
@@ -42,6 +50,7 @@ from .reads import (
     DHCP_LEASES,
     DHCP_RESERVATIONS,
     DHCP_SERVERS,
+    ETHERNET_PORTS,
     EXTERNAL_ADDRESSES,
     FIREWALL_CONF,
     FIREWALL_HIT_COUNTS,
@@ -49,13 +58,18 @@ from .reads import (
     FORWARD_CONF,
     FORWARD_RULES,
     IPV6_PREFIXES,
+    MESH_NODES,
     NETWORK_DEVICES,
     OPERATING_MODE,
     PORT_FORWARDS,
     PORT_TRIGGERS,
     SYSTEM_INFO,
+    USB_VOLUMES,
     UTILIZATION,
     WAN_STATUS,
+    WIFI_CLIENTS,
+    WIFI_RADIO_SETTINGS,
+    WIFI_RADIO_STATUS,
     ReadSpec,
 )
 
@@ -372,6 +386,29 @@ class SrmClient:
             self._read_object(AUTO_BLOCK),
         )
         return SecuritySettings.from_api(wan, conf, forward, block)
+
+    async def get_wifi_radios(self) -> tuple[WifiRadio, ...]:
+        """Return each Wi-Fi radio with its channel in use, settings and BSSID."""
+        settings, status = await asyncio.gather(
+            self._read_object(WIFI_RADIO_SETTINGS), self._read_object(WIFI_RADIO_STATUS)
+        )
+        return radios_from_api(settings, status)
+
+    async def get_wifi_clients(self) -> tuple[WifiClient, ...]:
+        """Return radio statistics of the clients on this device's own Wi-Fi."""
+        return WifiClient.list_from_api(await self._read_object(WIFI_CLIENTS))
+
+    async def get_ethernet_ports(self) -> tuple[EthernetPort, ...]:
+        """Return link state and speed of every Ethernet port."""
+        return EthernetPort.list_from_api(await self._read_object(ETHERNET_PORTS))
+
+    async def get_mesh_nodes(self) -> tuple[MeshNode, ...]:
+        """Return the router and its mesh points (a standalone device lists itself)."""
+        return MeshNode.list_from_api(await self._read_object(MESH_NODES))
+
+    async def get_usb_volumes(self) -> tuple[UsbVolume, ...]:
+        """Return volumes on USB storage attached to the device."""
+        return UsbVolume.list_from_api(await self._read_object(USB_VOLUMES))
 
     async def _read_object(self, spec: ReadSpec) -> Mapping[str, Any]:
         data = await self.read(spec)

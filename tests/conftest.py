@@ -41,11 +41,18 @@ API_FIXTURES: dict[tuple[str, str], tuple[str, int, int]] = {
     ("SYNO.Core.Security.Firewall.Conf", "get"): ("firewall_conf", 1, 1),
     ("SYNO.Core.Security.Firewall.Forward.Conf", "get"): ("forward_conf", 1, 1),
     ("SYNO.Core.Security.AutoBlock", "get"): ("auto_block", 1, 1),
+    ("SYNO.Wifi.Radio.Setting", "get"): ("wifi_radio_settings", 1, 1),
+    ("SYNO.Wifi.Radio.Status", "get"): ("wifi_radio_status", 1, 1),
+    ("SYNO.Wifi.Device", "get"): ("wifi_clients", 1, 1),
+    ("SYNO.Mesh.Network.EthPortInfo", "get"): ("ethernet_ports", 1, 1),
+    ("SYNO.Mesh.Node.List", "get"): ("mesh_nodes", 4, 4),
+    ("SYNO.Core.Storage.Volume", "list"): ("usb_volumes", 1, 1),
 }
 # Parameters the real router insists on; without them it answers 4302.
 REQUIRED_PARAMS: dict[tuple[str, str], dict[str, str]] = {
     ("SYNO.Core.Network.DHCPServer.ClientList", "list"): {"ifname": "all"},
     ("SYNO.Core.Network.Router.PortForward", "get"): {"additional": '{"upnp":true}'},
+    ("SYNO.Core.Storage.Volume", "list"): {"limit": "-1", "offset": "0", "location": "external"},
 }
 
 

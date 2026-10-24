@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-24
+
 ### Added
 
 - `get_operating_mode()`: router or standalone access point.
@@ -16,6 +18,8 @@ All notable changes to this project are documented here. The format follows
 - `get_firewall_rules()` (with hit counters), `get_forward_rules()`, `get_port_forwards()`
   (including UPnP mappings), `get_port_triggers()` and `get_security_settings()`, each with a
   `fingerprint` for change detection.
+- `get_wifi_radios()`, `get_wifi_clients()`, `get_ethernet_ports()`, `get_mesh_nodes()` and
+  `get_usb_volumes()`.
 
 ### Changed
 
@@ -34,5 +38,6 @@ All notable changes to this project are documented here. The format follows
 - `scripts/anonymize.py` to turn real router answers into publishable test fixtures.
 - Fixtures from an RT2600ac with SRM 1.3.2.
 
-[Unreleased]: https://github.com/eizedev/aiosynologysrm/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/eizedev/aiosynologysrm/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/eizedev/aiosynologysrm/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/eizedev/aiosynologysrm/releases/tag/v0.1.0

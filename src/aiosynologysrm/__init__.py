@@ -25,6 +25,7 @@ from .firewall import (
     PortTrigger,
     SecuritySettings,
 )
+from .hardware import EthernetPort, MeshNode, UsbVolume, WifiClient, WifiRadio
 from .models import (
     InterfaceTraffic,
     NetworkDevice,
@@ -56,12 +57,14 @@ __all__ = [
     "DhcpReservation",
     "DhcpServer",
     "Endpoint",
+    "EthernetPort",
     "ExternalAddress",
     "FirewallRule",
     "FirewallRules",
     "ForwardRule",
     "InterfaceTraffic",
     "Ipv6Prefix",
+    "MeshNode",
     "NetworkDevice",
     "NetworkDevices",
     "OperatingMode",
@@ -81,9 +84,12 @@ __all__ = [
     "SrmTwoFactorRequiredError",
     "SrmUnsupportedError",
     "SystemInfo",
+    "UsbVolume",
     "Utilization",
     "WanConnection",
     "WanStatus",
+    "WifiClient",
+    "WifiRadio",
     "__version__",
     "normalize_mac",
 ]

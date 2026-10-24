@@ -64,6 +64,18 @@ FIREWALL_CONF: Final = ReadSpec("SYNO.Core.Security.Firewall.Conf", "get", (1,))
 FORWARD_CONF: Final = ReadSpec("SYNO.Core.Security.Firewall.Forward.Conf", "get", (1,))
 AUTO_BLOCK: Final = ReadSpec("SYNO.Core.Security.AutoBlock", "get", (1,))
 
+WIFI_RADIO_SETTINGS: Final = ReadSpec("SYNO.Wifi.Radio.Setting", "get", (1,))
+WIFI_RADIO_STATUS: Final = ReadSpec("SYNO.Wifi.Radio.Status", "get", (1,))
+WIFI_CLIENTS: Final = ReadSpec("SYNO.Wifi.Device", "get", (1,))
+ETHERNET_PORTS: Final = ReadSpec("SYNO.Mesh.Network.EthPortInfo", "get", (1,))
+MESH_NODES: Final = ReadSpec("SYNO.Mesh.Node.List", "get", (4,))
+USB_VOLUMES: Final = ReadSpec(
+    "SYNO.Core.Storage.Volume",
+    "list",
+    (1,),
+    (("limit", "-1"), ("offset", "0"), ("location", "external")),
+)
+
 ALL_READS: Final = (
     SYSTEM_INFO,
     UTILIZATION,
@@ -84,4 +96,10 @@ ALL_READS: Final = (
     FIREWALL_CONF,
     FORWARD_CONF,
     AUTO_BLOCK,
+    WIFI_RADIO_SETTINGS,
+    WIFI_RADIO_STATUS,
+    WIFI_CLIENTS,
+    ETHERNET_PORTS,
+    MESH_NODES,
+    USB_VOLUMES,
 )
