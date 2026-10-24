@@ -37,7 +37,7 @@ async def test_router_wan_and_addresses(make_client: MakeClient) -> None:
     external = await client.get_external_addresses()
     assert len(external) == 1
     assert external[0].kind == "WAN"
-    assert external[0].ipv6 == wan.ipv6.address  # same address, consistently anonymized
+    assert external[0].ipv6_address == wan.ipv6.address  # same address, consistently anonymized
 
 
 async def test_router_ipv6_prefixes(make_client: MakeClient) -> None:

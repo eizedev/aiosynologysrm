@@ -120,8 +120,8 @@ class WanStatus:
 class ExternalAddress:
     """The public addresses the router reports (``SYNO.Core.DDNS.ExtIP`` ``list``)."""
 
-    ipv4: str | None
-    ipv6: str | None
+    ipv4_address: str | None
+    ipv6_address: str | None
     kind: str | None
     """SRM's ``type``, ``"WAN"`` for the main connection."""
     raw: Mapping[str, Any] = raw_field()
@@ -130,8 +130,8 @@ class ExternalAddress:
     def from_api(cls, item: Mapping[str, Any]) -> ExternalAddress:
         """Build from one list entry."""
         return cls(
-            ipv4=to_str(item.get("ip")),
-            ipv6=to_str(item.get("ipv6")),
+            ipv4_address=to_str(item.get("ip")),
+            ipv6_address=to_str(item.get("ipv6")),
             kind=to_str(item.get("type")),
             raw=frozen(item),
         )

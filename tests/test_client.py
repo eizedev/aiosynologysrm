@@ -302,3 +302,31 @@ async def test_body_over_the_limit(
     fake.chunked = True
     with pytest.raises(SrmResponseError, match="too large"):
         await make_client().get_network_devices()
+
+
+async def test_supports_a_getter_as_a_whole(fake: FakeSrm, make_client: MakeClient) -> None:
+    client = make_client()
+    assert await client.supports(client.get_wifi_radios)
+    del fake.catalog["SYNO.Wifi.Radio.Status"]
+    client.clear_catalog()
+    assert not await client.supports(client.get_wifi_radios)  # one of its two reads is missing
+    assert await client.supports(client.get_wifi_clients)
+    with pytest.raises(TypeError):
+        await client.supports(client.get_catalog)
+    with pytest.raises(TypeError):
+        await client.supports(make_client().get_system_info)  # another client's getter
+
+
+async def test_every_getter_sends_exactly_its_listed_reads(
+    fake: FakeSrm, make_client: MakeClient
+) -> None:
+    from aiosynologysrm.client import _GETTER_READS  # noqa: PLC0415 - private on purpose
+
+    client = make_client()
+    getters = {n for n in dir(client) if n.startswith("get_") and n != "get_catalog"}
+    assert getters == set(_GETTER_READS)
+    for name, specs in _GETTER_READS.items():
+        fake.requests.clear()
+        await getattr(client, name)()
+        sent = {(r["api"], r["method"]) for r in fake.requests if r.get("_sid")}
+        assert sent == {(s.api, s.method) for s in specs}, name
