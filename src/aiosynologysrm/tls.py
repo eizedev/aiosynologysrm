@@ -2,8 +2,8 @@
 
 SRM ships a self-signed certificate, so verification against certificate authorities fails.
 Pinning its SHA-256 fingerprint keeps the connection authenticated without trusting every
-certificate. Show the fingerprint to the user, let them confirm it (SRM displays the certificate
-under Control Panel > Security > Certificate), store it, and pass it on each connection::
+certificate. Show the fingerprint to the user, let them confirm it (for example against the
+certificate a browser shows for the router's address), store it, and pass it on each connection::
 
     fingerprint = await get_certificate_fingerprint("192.0.2.1")
     client = SrmClient(..., ssl=aiohttp.Fingerprint(bytes.fromhex(fingerprint)))

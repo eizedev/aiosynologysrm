@@ -21,7 +21,7 @@ nav = [
 language = "en"
 logo = "assets/icon.svg"
 favicon = "assets/icon.svg"
-# Fonts are self-hosted in assets/site.css; nothing is loaded from Google.
+# Fonts come from the system; nothing is loaded from Google.
 font = false
 features = [
   "content.action.edit",
