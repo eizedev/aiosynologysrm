@@ -6,6 +6,7 @@ units only where verified.
 
 from __future__ import annotations
 
+import ipaddress
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -26,6 +27,34 @@ from ._parse import (
 
 Family = Literal["ipv4", "ipv6"]
 FAMILIES: tuple[Family, Family] = ("ipv4", "ipv6")
+
+AddressScope = Literal["public", "private", "cgnat", "link_local", "other"]
+_CGNAT = ipaddress.ip_network("100.64.0.0/10")  # RFC 6598 shared address space
+
+
+def address_scope(value: str | None) -> AddressScope | None:
+    """Classify an IP address: reachable from the internet (``public``) or not, and why.
+
+    ``cgnat`` is the shared address space providers use for carrier-grade NAT: the line has no
+    public IPv4 address of its own. ``private`` is a local network, for example a router behind
+    another router. ``None`` when the value is not an IP address.
+    """
+    try:
+        address = ipaddress.ip_address((value or "").split("/")[0].split("%")[0])
+    except ValueError:
+        return None
+    if isinstance(address, ipaddress.IPv4Address) and address in _CGNAT:
+        scope: AddressScope = "cgnat"
+    elif address.is_link_local:
+        scope = "link_local"
+    elif address.is_global:
+        scope = "public"
+    elif address.is_private and not address.is_loopback:
+        scope = "private"
+    else:
+        scope = "other"
+    return scope
+
 
 _REMAINING = re.compile(r"^(\d+),(\d+),(\d+)$")
 
@@ -78,8 +107,20 @@ class WanConnection:
     """As SRM reports it; ``"normal"`` is what a working connection shows."""
     interface: str | None
     address: str | None
+    """The WAN interface's own address, read live. For IPv4 it is the public address only when
+    the router dials in itself; see :attr:`address_scope` and
+    :meth:`SrmClient.get_external_addresses`."""
     pppoe: bool | None
     raw: Mapping[str, Any] = raw_field()
+
+    @property
+    def address_scope(self) -> AddressScope | None:
+        """Where :attr:`address` belongs, see :func:`address_scope`.
+
+        ``private`` means another router sits in front, ``cgnat`` the provider's carrier-grade
+        NAT; in both cases the internet cannot reach this router over IPv4 directly.
+        """
+        return address_scope(self.address)
 
     @classmethod
     def from_api(cls, data: Mapping[str, Any]) -> WanConnection:

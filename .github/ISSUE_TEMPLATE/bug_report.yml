@@ -11,7 +11,7 @@ body:
     id: version
     attributes:
       label: aiosynologysrm version
-      placeholder: "0.1.0"
+      description: "`pip show aiosynologysrm`"
     validations:
       required: true
   - type: input
@@ -25,7 +25,12 @@ body:
     id: mode
     attributes:
       label: Operating mode
-      options: ["router", "mesh point", "standalone access point", "not sure"]
+      options:
+        - "router without mesh points"
+        - "router with mesh points"
+        - "mesh point"
+        - "standalone access point"
+        - "not sure"
     validations:
       required: true
   - type: textarea

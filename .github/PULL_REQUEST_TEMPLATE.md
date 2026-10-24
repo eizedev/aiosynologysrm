@@ -9,4 +9,6 @@
 - [ ] `uv run pytest`, `uv run mypy`, `uv run ruff check .` pass
 - [ ] New API calls are reads only and listed in `reads.py`
 - [ ] New fixtures are anonymized and checked by eye
+- [ ] No personal data (addresses, host names, network layout) in code, docs or fixtures
+- [ ] Breaking changes are marked as such in `CHANGELOG.md`
 - [ ] `CHANGELOG.md` and, if relevant, `docs/compatibility.md` updated

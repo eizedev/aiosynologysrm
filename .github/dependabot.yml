@@ -11,6 +11,7 @@ updates:
     groups:
       dev-dependencies:
         dependency-type: "development"
+    labels: ["dependencies"]
     commit-message:
       prefix: "build(deps)"
 
@@ -20,5 +21,6 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 7
+    labels: ["dependencies"]
     commit-message:
       prefix: "ci(deps)"

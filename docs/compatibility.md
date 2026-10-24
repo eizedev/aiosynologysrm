@@ -14,7 +14,7 @@ This page is the single place that says what this library supports and how sure 
    [`scripts/anonymize.py`](../scripts/anonymize.py), in `tests/fixtures/<model>-srm-<version>/`.
    A model or firmware counts as **tested** only when its fixtures are in the repository.
 3. **Reports from users** add models and firmware versions: open an issue with the "Model or
-   firmware report" form.
+   firmware report" form and attach the output of `aiosynologysrm-diagnostics`.
 
 ## Status levels
 
@@ -64,14 +64,23 @@ This page is the single place that says what this library supports and how sure 
 For the RT6600ax there is outside evidence: the Home Assistant integration
 [synology-srm-extended](https://github.com/Vachler/synology-srm-extended) reads the same device
 list (`NSM.Device` v5), topology, Ethernet port and external address APIs on an RT6600ax with
-SRM 1.3.2. That supports "expected", it does not replace fixtures.
+SRM 1.3.2, with the same API versions this library uses. The RT6600ax therefore most likely
+behaves like the tested models; fixtures from it would make that certain
+([#14](https://github.com/eizedev/aiosynologysrm/issues/14)).
 
 ## Where values come from
 
 - `get_external_addresses()` does not look anything up. SRM returns what a background service
   stored: on a router with DDNS the DDNS updater (it asks `checkip.synology.com`); on a standalone
   access point without DDNS the value was present as well, written by a service not identified
-  yet. The values can be out of date or missing. This was measured on one network only.
+  yet. The values can be out of date or missing. This was measured on one network only
+  ([#13](https://github.com/eizedev/aiosynologysrm/issues/13)).
+- `get_wan_status()` reports the address of the WAN interface itself, read live. It is the public
+  address only when the router dials in itself (PPPoE, or a modem in bridge mode); behind another
+  router it is a private address, and on a line with carrier-grade NAT an address from
+  100.64.0.0/10 (seen on a fibre line). `WanConnection.address_scope` tells these apart. Use
+  `get_wan_status()` for the connection itself and `get_external_addresses()` for the address the
+  internet sees; on a standalone access point only the latter means anything.
 
 ## Operating modes
 
@@ -87,10 +96,11 @@ The mode also matters for client data: in a mesh, the router knows which node ea
 clients as wired devices, and only the access point knows they are on Wi-Fi. Combining the lists
 of several devices is planned as a library helper.
 
-Mesh setups are untested: the fixtures come from a router and a standalone access point. Whether a
-mesh point answers the Web API itself is not known; Synology manages mesh points from the main
-router, and reviews report that a mesh point's own interface cannot be opened. Until someone checks
-it, connect to the main router.
+A mesh point cannot be managed directly: it has no SRM interface of its own, only a few actions in
+the main router's SRM. Connect to the main router; it reports the mesh points
+(`get_mesh_nodes()`) and which node each client uses. Mesh setups are untested otherwise: the
+fixtures come from a router and a standalone access point
+([#12](https://github.com/eizedev/aiosynologysrm/issues/12)).
 
 ## Out of scope
 

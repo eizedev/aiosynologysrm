@@ -171,3 +171,31 @@ def test_main_refuses_and_writes(tmp_path: Path, capsys: pytest.CaptureFixture[s
     sys.argv = ["anonymize.py"]
     assert anonymize.main() == 2
     capsys.readouterr()
+
+
+@pytest.mark.parametrize(
+    ("data", "problem"),
+    [
+        ({"aa:bb:cc:11:22:33": {"band": "5G"}}, "look like addresses"),
+        ({"Annas Laptop": 1}, "look like addresses"),
+        ({"status": "connected to 10.1.2.3"}, "new values under kept keys (status)"),
+        ({"profile": "Annas Kinderprofil"}, "new values under kept keys (profile)"),
+        ({"model": "Annas Laptop"}, "new values under kept keys (model)"),
+        ({"firmware_ver": "custom build"}, "new values under kept keys (firmware_ver)"),
+        ({"pin": 1234}, "numbers under unclassified keys (pin)"),
+    ],
+)
+def test_unknown_keys_values_and_numbers_are_refused(data: dict[str, Any], problem: str) -> None:
+    a = anonymize.Anonymizer()
+    a.walk(data)
+    with pytest.raises(anonymize.UnknownKeyError) as err:
+        a.check()
+    assert problem in str(err.value)
+    for value in ("10.1.2.3", "Annas", "aa:bb:cc"):
+        assert value not in str(err.value)  # the message names keys, never values
+
+
+def test_secret_numbers_are_replaced() -> None:
+    a = anonymize.Anonymizer()
+    assert a.walk({"serial": 1234567890, "attempts": 10}) == {"serial": 0, "attempts": 10}
+    a.check()

@@ -6,12 +6,19 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-24
+
 ### Added
 
 - `login(otp_code=...)` to log in again with a fresh two-factor code.
 - A warning in the log when a client is created with `use_https=False`.
 - `supports()` also takes one of the client's getters and checks every read it needs.
 - `Family` (`"ipv4"` or `"ipv6"`) is exported.
+- `aiosynologysrm-diagnostics` (also `python -m aiosynologysrm.diagnostics`) and
+  `collect_diagnostics(client)`: a report on what a router offers and answers, without any of its
+  values, safe to paste into an issue.
+- `address_scope()` and `WanConnection.address_scope`: whether an address is `public`, `private`
+  (behind another router) or `cgnat` (carrier-grade NAT, no public IPv4 of its own).
 
 ### Changed
 
@@ -29,8 +36,16 @@ All notable changes to this project are documented here. The format follows
   `interface`, `InterfaceTraffic.rx_raw`/`tx_raw` -> `rx_rate_raw`/`tx_rate_raw`,
   `MeshNode.is_main_router` -> `is_root` (also true for a standalone device).
 - **Breaking:** `SystemInfo.firmware_date` is a `datetime.date`.
+- The fixture anonymizer also checks values: kept fields accept only listed values or formats,
+  numbers only under listed keys, and keys that look like addresses or names stop it. Its
+  messages name keys, never values. It refuses to run on Python older than 3.12.
+- Releases run the complete CI workflow (all Python versions, formatting, lowest dependencies)
+  before publishing.
+- Issue forms cover every getter and mesh setups.
 - Documentation: what "read only" covers, mesh setups marked as untested, where external addresses
-  come from, the meaning of error codes 105, 117 and 407.
+  come from, the meaning of error codes 105, 117 and 407, a table of all handled error codes with
+  their sources, mesh points (managed only through the main router), `get_wan_status()` as the
+  live alternative to the cached external address.
 
 ## [0.3.0] - 2026-10-24
 
@@ -105,7 +120,8 @@ All notable changes to this project are documented here. The format follows
 - `scripts/anonymize.py` to turn real router answers into publishable test fixtures.
 - Fixtures from an RT2600ac with SRM 1.3.2.
 
-[Unreleased]: https://github.com/eizedev/aiosynologysrm/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/eizedev/aiosynologysrm/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/eizedev/aiosynologysrm/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/eizedev/aiosynologysrm/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/eizedev/aiosynologysrm/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/eizedev/aiosynologysrm/releases/tag/v0.1.0
