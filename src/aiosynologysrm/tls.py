@@ -35,6 +35,7 @@ async def get_certificate_fingerprint(
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE
+    host = host.removeprefix("[").removesuffix("]")  # accept an IPv6 address in URL form
     try:
         async with asyncio.timeout(timeout):
             _, writer = await asyncio.open_connection(host, port, ssl=context, server_hostname=host)

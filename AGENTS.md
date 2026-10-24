@@ -30,11 +30,13 @@ uv run mypy                   # strict
   `*.raw.json` is ignored for that reason. The script is an allowlist: a new text field stops it
   until the field is added to `KEEP_KEYS`, `ADDRESS_KEYS` or `NAME_KEYS`. Keep only fixed
   vocabulary; when in doubt, it is a name. Check the output by eye as well.
-- **Models are frozen dataclasses** built by a `from_api` or `list_from_api` class method, with
-  the payload in `raw: Mapping[str, Any] = raw_field()`, set to `frozen(payload)`.
+- **Models mirror SRM** (docs/design.md, "Data model"): frozen dataclasses deriving from
+  `SrmModel`, one per SRM object, every field declared as `name: T = srm("srmKey", converter)`
+  with `name == snake("srmKey")`, then `raw: Mapping[str, Any] = raw_field()`. No renaming, no
+  interpretation in models; derived values go into `helpers.py`.
 - **Parsers never raise.** Use the converters in `_parse.py` (`to_int`, `to_str`, `to_bool`,
-  `to_timedelta`, ...). Add the new parser to `PARSERS` in `tests/test_robustness.py`.
-- **Units only when verified** on a router; otherwise keep SRM's number in a field ending in `_raw`.
+  `to_timedelta`, ...). Every exported model is fuzzed by `tests/test_robustness.py` automatically.
+- **Units only when verified** on a router, and then in the field's docstring, not its name.
 - **Errors never carry secrets**: no URL, password, session id or response body in an exception or
   log message.
 - **Docs describe the current state**: update `README.md`, `docs/compatibility.md` and

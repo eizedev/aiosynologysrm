@@ -36,18 +36,22 @@ class ReadSpec:
         if not self.versions:
             msg = f"{self.api}.{self.method} needs at least one version"
             raise ValueError(msg)
+        reserved = {"api", "method", "version", "_sid"} & {name for name, _ in self.params}
+        if reserved:
+            msg = f"{self.api}.{self.method}: parameters may not set {sorted(reserved)}"
+            raise ValueError(msg)
 
 
 SYSTEM_INFO: Final = ReadSpec("SYNO.Core.System", "info", (2, 1))
 UTILIZATION: Final = ReadSpec("SYNO.Core.System.Utilization", "get", (1,))
 NETWORK_DEVICES: Final = ReadSpec("SYNO.Core.Network.NSM.Device", "get", (5,))
 
-OPERATING_MODE: Final = ReadSpec("SYNO.Core.Network.Router.Topology", "get", (4,))
-WAN_STATUS: Final = ReadSpec("SYNO.Core.Network.Router.ConnectionStatus", "get", (1,))
-EXTERNAL_ADDRESSES: Final = ReadSpec("SYNO.Core.DDNS.ExtIP", "list", (1,))
+TOPOLOGY: Final = ReadSpec("SYNO.Core.Network.Router.Topology", "get", (4,))
+CONNECTION_STATUS: Final = ReadSpec("SYNO.Core.Network.Router.ConnectionStatus", "get", (1,))
+EXTERNAL_IP: Final = ReadSpec("SYNO.Core.DDNS.ExtIP", "list", (1,))
 IPV6_PREFIXES: Final = ReadSpec("SYNO.Core.Network.IPv6.Router.Prefix", "list", (1,))
 DHCP_SERVERS: Final = ReadSpec("SYNO.Core.Network.DHCPServer", "get", (1,))
-DHCP_LEASES: Final = ReadSpec(
+DHCP_CLIENTS: Final = ReadSpec(
     "SYNO.Core.Network.DHCPServer.ClientList", "list", (2,), (("ifname", "all"),)
 )
 DHCP_RESERVATIONS: Final = ReadSpec("SYNO.Core.Network.DHCPServer.Reservation", "get", (2,))
@@ -66,8 +70,8 @@ AUTO_BLOCK: Final = ReadSpec("SYNO.Core.Security.AutoBlock", "get", (1,))
 
 WIFI_RADIO_SETTINGS: Final = ReadSpec("SYNO.Wifi.Radio.Setting", "get", (1,))
 WIFI_RADIO_STATUS: Final = ReadSpec("SYNO.Wifi.Radio.Status", "get", (1,))
-WIFI_CLIENTS: Final = ReadSpec("SYNO.Wifi.Device", "get", (1,))
-ETHERNET_PORTS: Final = ReadSpec("SYNO.Mesh.Network.EthPortInfo", "get", (1,))
+WIFI_DEVICES: Final = ReadSpec("SYNO.Wifi.Device", "get", (1,))
+ETH_PORT_INFO: Final = ReadSpec("SYNO.Mesh.Network.EthPortInfo", "get", (1,))
 MESH_NODES: Final = ReadSpec("SYNO.Mesh.Node.List", "get", (4,))
 USB_VOLUMES: Final = ReadSpec(
     "SYNO.Core.Storage.Volume",
@@ -80,12 +84,12 @@ ALL_READS: Final = (
     SYSTEM_INFO,
     UTILIZATION,
     NETWORK_DEVICES,
-    OPERATING_MODE,
-    WAN_STATUS,
-    EXTERNAL_ADDRESSES,
+    TOPOLOGY,
+    CONNECTION_STATUS,
+    EXTERNAL_IP,
     IPV6_PREFIXES,
     DHCP_SERVERS,
-    DHCP_LEASES,
+    DHCP_CLIENTS,
     DHCP_RESERVATIONS,
     FIREWALL_RULES,
     FIREWALL_HIT_COUNTS,
@@ -98,8 +102,8 @@ ALL_READS: Final = (
     AUTO_BLOCK,
     WIFI_RADIO_SETTINGS,
     WIFI_RADIO_STATUS,
-    WIFI_CLIENTS,
-    ETHERNET_PORTS,
+    WIFI_DEVICES,
+    ETH_PORT_INFO,
     MESH_NODES,
     USB_VOLUMES,
 )

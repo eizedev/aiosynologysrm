@@ -13,7 +13,7 @@ import aiohttp
 import pytest
 from aiohttp.test_utils import TestServer
 
-from aiosynologysrm import SrmClient, address_scope
+from aiosynologysrm import SrmClient
 from aiosynologysrm import diagnostics as diag
 
 from .conftest import PASSWORD, USERNAME, FakeSrm
@@ -31,14 +31,15 @@ async def test_report_has_structure_but_no_values(make_client: MakeClient) -> No
         "model": "RT2600ac",
         "firmware": "SRM 1.3.2-9366 Update 3",
         "operating_mode": "router",
-        "wan_ipv4_scope": "private",  # the fixture's documentation range counts as private
+        "wan_ipv4_scope": "other",  # the fixtures use a documentation range
     }
     devices = report["getters"]["get_network_devices"]
     assert devices["result"] == "ok"
     assert devices["count"] == 70
-    assert devices["fields"]["mac"] == ["str"]
-    assert "ip_addr" in devices["raw_keys"]
-    assert report["getters"]["get_utilization"]["fields"]["interfaces[].interface"] == ["str"]
+    assert devices["fields"]["devices[].mac"] == ["str"]
+    assert devices["unmapped_keys"] == 0
+    assert report["getters"]["get_utilization"]["fields"]["network[].device"] == ["str"]
+    assert report["getters"]["get_external_ip"]["count"] == 1
     assert report["apis"]["SYNO.Core.Network.NSM.Device"] == [1, 5]
     text = json.dumps(report)
     assert not ADDRESS_LIKE.search(text)
@@ -51,9 +52,16 @@ async def test_unsupported_and_failing_getters(fake: FakeSrm, make_client: MakeC
     report = await diag.collect_diagnostics(make_client())
     assert report["getters"]["get_usb_volumes"] == {"result": "unsupported"}
     assert report["getters"]["get_mesh_nodes"] == {"result": "SrmApiError 4302"}
-    del fake.catalog["SYNO.Core.Network.Router.ConnectionStatus"]
+    fake.errors[("SYNO.Core.Network.Router.ConnectionStatus", "get")] = 4302
+    fake.errors[("SYNO.Core.System", "info")] = 4302
+    fake.errors[("SYNO.Core.Network.Router.Topology", "get")] = 4302
     report = await diag.collect_diagnostics(make_client())
-    assert "wan_ipv4_scope" not in report["device"]
+    assert report["device"] == {
+        "system_info": "SrmApiError 4302",
+        "topology": "SrmApiError 4302",
+        "connection_status": "SrmApiError 4302",
+    }
+    assert report["getters"]["get_wifi_devices"]["result"] == "ok"  # the rest still runs
 
 
 async def test_counts_can_be_left_out(make_client: MakeClient) -> None:
@@ -67,11 +75,17 @@ async def test_login_failure_is_reported(make_client: MakeClient) -> None:
     assert "getters" not in report
 
 
-def test_keys_that_look_like_data_are_redacted() -> None:
-    assert diag._safe_key("ip_addr") == "ip_addr"
-    assert diag._safe_key("aa:bb:cc:dd:ee:ff") == "<redacted>"
-    assert diag._safe_key("aabbccddeeff") == "<redacted>"
-    assert diag._safe_key("Annas Laptop") == "<redacted>"
+async def test_unmapped_keys_are_counted_not_named(fake: FakeSrm, make_client: MakeClient) -> None:
+    fake.responses[("SYNO.Core.Network.Router.Topology", "get")] = {
+        "net_topology": "router",
+        "AnnasLaptop": True,
+        "living_room_tv": 1,
+    }
+    report = await diag.collect_diagnostics(make_client())
+    assert report["getters"]["get_topology"]["unmapped_keys"] == 2
+    text = json.dumps(report)
+    assert "Annas" not in text
+    assert "living_room" not in text
 
 
 async def test_command_line(
@@ -92,7 +106,9 @@ def _args(*extra: str) -> Any:
     return diag._parser().parse_args(["192.0.2.1", "--user", "u", *extra])
 
 
-def test_certificate_choice(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_certificate_choice(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     assert diag._trust(_args("--insecure")) is False
     assert diag._trust(_args("--http")) is False
     pinned = diag._trust(_args("--fingerprint", "ab" * 32))
@@ -112,22 +128,12 @@ def test_certificate_choice(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr("sys.stdin", Terminal("y\n"))
     trusted = diag._trust(_args())
+    assert "Trust it?" not in capsys.readouterr().out  # the question goes to stderr
     assert isinstance(trusted, aiohttp.Fingerprint)
     assert trusted.fingerprint == bytes.fromhex("cd" * 32)
 
 
-@pytest.mark.parametrize(
-    ("value", "scope"),
-    [
-        ("100.70.1.2", "cgnat"),
-        ("192.168.1.1", "private"),
-        ("8.8.8.8", "public"),
-        ("2001:4860::1", "public"),
-        ("fe80::1%eth0", "link_local"),
-        ("127.0.0.1", "other"),
-        ("not an address", None),
-        (None, None),
-    ],
-)
-def test_address_scope(value: str | None, scope: str | None) -> None:
-    assert address_scope(value) == scope
+@pytest.mark.parametrize("value", ["xyz", "ab" * 16, "ab" * 33])
+def test_bad_fingerprint_is_a_clear_error(value: str) -> None:
+    with pytest.raises(SystemExit, match="SHA-256 in hex"):
+        diag._trust(_args("--fingerprint", value))

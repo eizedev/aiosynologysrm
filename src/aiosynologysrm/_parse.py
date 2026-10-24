@@ -1,15 +1,19 @@
-"""Tolerant converters shared by the models: odd input becomes ``None``, never an exception."""
+"""Tolerant converters and the model base: odd input becomes ``None``, never an exception.
+
+Every model field names the SRM key it reads with :func:`srm`. :class:`SrmModel` builds the model
+from that declaration, so a field is named after its key by construction.
+"""
 
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
-from dataclasses import field
+from collections.abc import Callable, Mapping
+from dataclasses import field, fields
 from datetime import timedelta
 from types import MappingProxyType
-from typing import Any
+from typing import Any, Self
 
-_INT = re.compile(r"-?[0-9]+")
+_INT = re.compile(r"-?[0-9]{1,30}")  # far below Python's 4300-digit limit for int()
 _MAC = re.compile(r"^[0-9a-f]{2}([:-]?)[0-9a-f]{2}(?:\1[0-9a-f]{2}){4}$")  # one separator
 
 
@@ -83,3 +87,72 @@ def raw_field() -> Any:
     It defaults to an empty mapping, so models can be built by hand, for example in tests.
     """
     return field(default=_EMPTY, repr=False, compare=False, hash=False)
+
+
+def to_int_or_str(value: Any) -> int | str | None:
+    """Return a number as int and anything else as non-empty text (SRM ports can be ranges)."""
+    number = to_int(value)
+    return number if number is not None else to_str(value)
+
+
+def to_str_tuple(value: Any) -> tuple[str, ...]:
+    """Return the strings of a list."""
+    return tuple(v for v in to_list(value) if isinstance(v, str))
+
+
+def srm(key: str, convert: Callable[[Any], Any]) -> Any:
+    """Declare a model field that holds SRM's ``key``, converted by ``convert``.
+
+    The default (``None``, or ``()`` for lists) lets models be built by hand, for example in tests.
+    """
+    default: Any = () if convert is to_str_tuple or getattr(convert, "is_list", False) else None
+    return field(default=default, metadata={"srm": key, "convert": convert})
+
+
+def snake(key: str) -> str:
+    """Return the attribute name for an SRM key: snake_case; a leading number moves to the end.
+
+    ``transferRXRate`` -> ``transfer_rx_rate``, ``targetIP`` -> ``target_ip``,
+    ``15min_load`` -> ``load_15min``.
+    """
+    words = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", key))
+    name = words.lower()
+    match = re.fullmatch(r"(\d+[a-z]*)_(.+)", name)
+    return f"{match.group(2)}_{match.group(1)}" if match else name
+
+
+class SrmModel:
+    """Base of every model: builds the fields declared with :func:`srm` from one SRM object."""
+
+    __slots__ = ()
+
+    @classmethod
+    def from_api(cls, data: Any) -> Self:
+        """Build from one SRM object; anything that is not an object gives an empty model."""
+        source = to_mapping(data)
+        values = {
+            f.name: f.metadata["convert"](source.get(f.metadata["srm"]))
+            for f in fields(cls)  # type: ignore[arg-type]
+            if "srm" in f.metadata
+        }
+        return cls(**values, raw=frozen(source))  # type: ignore[call-arg]
+
+    @classmethod
+    def list_from_api(cls, data: Any) -> tuple[Self, ...]:
+        """Build one model per object in a list; anything else in the list is skipped."""
+        return tuple(cls.from_api(item) for item in to_list(data) if isinstance(item, Mapping))
+
+
+def one(model: type[SrmModel]) -> Callable[[Any], Any]:
+    """Return a converter for a nested object."""
+    return lambda value: model.from_api(value) if isinstance(value, Mapping) else None
+
+
+def many(model: type[SrmModel]) -> Callable[[Any], Any]:
+    """Return a converter for a nested list of objects."""
+
+    def convert(value: Any) -> tuple[SrmModel, ...]:
+        return model.list_from_api(value)
+
+    convert.is_list = True  # type: ignore[attr-defined]
+    return convert

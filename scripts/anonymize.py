@@ -267,6 +267,17 @@ PORT_KEYS = frozenset(
 PORT_NUMBER = re.compile(r"\b\d{1,5}\b")
 FIRST_PORT = 10001
 NEUTRAL_TIME_ZONE = "UTC"
+# A recording's clock and the device types of a household also describe one real network. The
+# tests need only a few common device types; the rest become "other".
+NEUTRAL_TIME_TEXT = "2026-01-01 00:00:00"
+NEUTRAL_TIME_NUMBER = 1767225600  # 2026-01-01 00:00:00 UTC
+COMMON_DEV_TYPES = frozenset(
+    {"cellphone", "default", "game", "ipad", "nas", "nb", "other", "printer", "router", "switch"}
+    | {"tv", "watch"}
+)
+# What may be left of an address field once its addresses are replaced: separators, prefix
+# lengths, ranges. Anything else (a host name without a dot, a word) stops the script.
+ADDRESS_REST = re.compile(r"[\s,;/\-0-9]*")
 NEUTRAL_COUNTRIES = ("XA", "XB", "XC", "XD")  # user-assigned ISO 3166 codes, never a country
 
 
@@ -432,6 +443,12 @@ class Anonymizer:
             return "XXXXXXXX"
         if lower == "time_zone":
             return NEUTRAL_TIME_ZONE
+        if lower == "time" and KEEP_PATTERNS["time"].fullmatch(value):
+            return NEUTRAL_TIME_TEXT
+        if lower == "dev_type" and value not in COMMON_DEV_TYPES:
+            return (
+                "other" if value in KEEP_VALUES["dev_type"] else self._unknown_value(lower, value)
+            )
         if lower in KEEP_PATTERNS:
             if not KEEP_PATTERNS[lower].fullmatch(value):
                 self.unknown_values.add(lower)
@@ -441,10 +458,16 @@ class Anonymizer:
                 self.unknown_values.add(lower)
             return value
         if lower in ADDRESS_KEYS:
+            if not ADDRESS_REST.fullmatch(TOKEN.sub("", value)):
+                self.unknown_values.add(lower)  # text that is not an address
             return self.text(value)
         if lower in NAME_KEYS:
             return self.name(lower, value)
         self._note(self.unknown, key)
+        return value
+
+    def _unknown_value(self, key: str, value: str) -> str:
+        self.unknown_values.add(key)
         return value
 
     @staticmethod
@@ -475,6 +498,8 @@ class Anonymizer:
         if isinstance(value, (int, float)) and not isinstance(value, bool):
             if SECRET_KEYS.search(key):
                 return 0
+            if key.lower() == "time":
+                return NEUTRAL_TIME_NUMBER
             if key.lower() not in NUMBER_KEYS:
                 self._note(self.unknown_numbers, key)
         return value
@@ -494,8 +519,8 @@ class Anonymizer:
         if self.unknown_values:
             names = ", ".join(sorted(self.unknown_values))
             problems.append(
-                f"new values under kept keys ({names}): add them to KEEP_VALUES if "
-                "they are vocabulary, otherwise move the key to NAME_KEYS"
+                f"new values under kept or address keys ({names}): add them to KEEP_VALUES "
+                "if they are vocabulary, otherwise move the key to NAME_KEYS"
             )
         if self.unknown_numbers:
             names = ", ".join(sorted(self.unknown_numbers))
@@ -506,10 +531,14 @@ class Anonymizer:
             raise UnknownKeyError("; ".join(problems))
 
 
+KEY_MARK = "\0key"  # marks a dict key in _values()
+CLASSIFIED_KEYS = KEEP_KEYS | ADDRESS_KEYS | NAME_KEYS | NUMBER_KEYS | PORT_KEYS | {"time_zone"}
+
+
 def _values(value: Any, key: str = "") -> list[tuple[str, str]]:
-    """All string values with the key they belong to."""
+    """All string values with the key they belong to; keys count as values of their own."""
     if isinstance(value, dict):
-        return [pair for k, v in value.items() for pair in _values(v, k)]
+        return [pair for k, v in value.items() for pair in [(KEY_MARK, k.lower()), *_values(v, k)]]
     if isinstance(value, list):
         return [pair for v in value for pair in _values(v, key)]
     return [(key, value.lower())] if isinstance(value, str) else []
@@ -527,7 +556,10 @@ def leaks(result: Any, anonymizer: Anonymizer) -> list[str]:
         n
         for n in anonymizer.original_names
         for k, v in values
-        if v == n and k.lower() not in KEEP_KEYS
+        if v == n
+        and k.lower() not in KEEP_KEYS
+        # A key the script knows is SRM's field name; a device called "mac" is not a leak.
+        and not (k == KEY_MARK and v in CLASSIFIED_KEYS)
     }
     return sorted(found)
 

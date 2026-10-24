@@ -175,7 +175,7 @@
       "band": "5G",
       "connection": "wifi",
       "current_rate": 54,
-      "dev_type": "av_system",
+      "dev_type": "other",
       "hostname": "hostname-45",
       "ip6_addr": "",
       "ip_addr": "192.0.2.11",
@@ -204,7 +204,7 @@
     },
     {
       "connection": "ethernet",
-      "dev_type": "av_system",
+      "dev_type": "other",
       "hostname": "hostname-46",
       "ip6_addr": "",
       "ip_addr": "192.0.2.5",
@@ -226,7 +226,7 @@
       "band": "5G",
       "connection": "wifi",
       "current_rate": 54,
-      "dev_type": "av_system",
+      "dev_type": "other",
       "hostname": "hostname-47",
       "ip6_addr": "",
       "ip_addr": "192.0.2.34",
@@ -257,7 +257,7 @@
       "band": "5G",
       "connection": "wifi",
       "current_rate": 135,
-      "dev_type": "water_heater",
+      "dev_type": "other",
       "hostname": "hostname-48",
       "ip6_addr": "",
       "ip_addr": "192.0.2.7",
@@ -319,7 +319,7 @@
       "band": "5G",
       "connection": "wifi",
       "current_rate": 130,
-      "dev_type": "av_system",
+      "dev_type": "other",
       "hostname": "hostname-49",
       "ip6_addr": "",
       "ip_addr": "192.0.2.18",
@@ -348,7 +348,7 @@
     },
     {
       "connection": "ethernet",
-      "dev_type": "av_system",
+      "dev_type": "other",
       "hostname": "hostname-50",
       "ip6_addr": "",
       "ip_addr": "192.0.2.4",
@@ -390,7 +390,7 @@
       "band": "2.4G",
       "connection": "wifi",
       "current_rate": 57,
-      "dev_type": "robotcleaner",
+      "dev_type": "other",
       "hostname": "hostname-51",
       "ip6_addr": "",
       "ip_addr": "192.0.2.6",
@@ -483,7 +483,7 @@
       "band": "5G",
       "connection": "wifi",
       "current_rate": 130,
-      "dev_type": "av_system",
+      "dev_type": "other",
       "hostname": "hostname-54",
       "ip6_addr": "",
       "ip_addr": "192.0.2.33",
@@ -512,7 +512,7 @@
     },
     {
       "connection": "ethernet",
-      "dev_type": "av_system",
+      "dev_type": "other",
       "hostname": "hostname-55",
       "ip6_addr": "",
       "ip_addr": "192.0.2.27",
@@ -645,7 +645,7 @@
     },
     {
       "connection": "ethernet",
-      "dev_type": "temperature_sensor",
+      "dev_type": "other",
       "hostname": "hostname-2",
       "ip6_addr": "",
       "ip_addr": "192.0.2.2",
@@ -874,7 +874,7 @@
       "mesh_node_id": -1
     },
     {
-      "dev_type": "air_conditioner",
+      "dev_type": "other",
       "hostname": "hostname-59",
       "ip6_addr": "",
       "ip_addr": "192.0.2.55",
@@ -954,7 +954,7 @@
       "signalstrength": 0
     },
     {
-      "dev_type": "av_system",
+      "dev_type": "other",
       "hostname": "hostname-62",
       "ip6_addr": "fe80::11a",
       "ip_addr": "",
@@ -971,7 +971,7 @@
       "mesh_node_id": -1
     },
     {
-      "dev_type": "av_system",
+      "dev_type": "other",
       "hostname": "hostname-63",
       "ip6_addr": "fe80::11b",
       "ip_addr": "",
@@ -988,7 +988,7 @@
       "mesh_node_id": -1
     },
     {
-      "dev_type": "av_system",
+      "dev_type": "other",
       "hostname": "hostname-53",
       "ip6_addr": "fe80::11c",
       "ip_addr": "192.0.2.58",
@@ -1051,7 +1051,7 @@
       "signalstrength": 0
     },
     {
-      "dev_type": "av_system",
+      "dev_type": "other",
       "hostname": "hostname-65",
       "ip6_addr": "",
       "ip_addr": "192.0.2.4",
@@ -1159,7 +1159,7 @@
       "signalstrength": 0
     },
     {
-      "dev_type": "dlna",
+      "dev_type": "other",
       "hostname": "hostname-39",
       "ip6_addr": "",
       "ip_addr": "192.0.2.39",

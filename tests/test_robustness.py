@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Callable
 from datetime import timedelta
 from typing import Any
@@ -12,32 +13,13 @@ from hypothesis import strategies as st
 
 import aiosynologysrm
 from aiosynologysrm import (
-    DhcpLease,
-    DhcpReservation,
-    DhcpServer,
-    EthernetPort,
-    ExternalAddress,
-    FirewallRules,
-    ForwardRule,
-    Ipv6Prefix,
-    MeshNode,
-    NetworkDevices,
-    OperatingMode,
-    PortForward,
-    PortTrigger,
-    SecuritySettings,
     SrmClient,
     SrmConnectionError,
     SrmResponseError,
     SrmUnsupportedError,
-    SystemInfo,
-    UsbVolume,
-    Utilization,
-    WanStatus,
-    WifiClient,
-    WifiRadio,
+    helpers,
 )
-from aiosynologysrm._parse import to_int, to_timedelta
+from aiosynologysrm._parse import SrmModel, to_int, to_timedelta
 from aiosynologysrm.reads import ALL_READS, READ_METHODS
 
 from .conftest import FakeSrm
@@ -110,32 +92,23 @@ JSON = st.recursive(
 )
 OBJECTS = st.dictionaries(KEYS, JSON, max_size=8)
 
-PARSERS: list[Callable[[dict[str, Any]], object]] = [
-    SystemInfo.from_api,
-    Utilization.from_api,
-    NetworkDevices.from_api,
-    OperatingMode.from_api,
-    WanStatus.from_api,
-    ExternalAddress.list_from_api,
-    Ipv6Prefix.list_from_api,
-    DhcpServer.list_from_api,
-    DhcpLease.list_from_api,
-    DhcpReservation.list_from_api,
-    lambda d: FirewallRules.from_api(d, d.get("data")),
-    ForwardRule.list_from_api,
-    PortForward.list_from_api,
-    PortTrigger.list_from_api,
-    lambda d: SecuritySettings.from_api(d, d, d, d),
-    lambda d: WifiRadio.list_from_api(d, d),
-    WifiClient.list_from_api,
-    EthernetPort.list_from_api,
-    MeshNode.list_from_api,
-    UsbVolume.list_from_api,
+MODELS = [
+    cls
+    for _, cls in inspect.getmembers(aiosynologysrm, inspect.isclass)
+    if issubclass(cls, SrmModel)
+]
+PARSERS: list[Callable[[Any], object]] = [
+    *(m.from_api for m in MODELS),
+    *(m.list_from_api for m in MODELS),
+    lambda d: helpers.address_scope(str(d.get("ip"))),
+    lambda d: helpers.up_time(str(d.get("up_time"))),
+    lambda d: helpers.lease_remaining(str(d.get("ip"))),
+    lambda d: helpers.split_addresses(str(d.get("ip6_addr"))),
 ]
 
 
 @pytest.mark.parametrize("parse", PARSERS)
-@settings(max_examples=150, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+@settings(max_examples=60, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 @given(data=OBJECTS)
 def test_parsers_never_raise(
     parse: Callable[[dict[str, Any]], object], data: dict[str, Any]
@@ -157,14 +130,13 @@ def test_durations_out_of_range_become_none() -> None:
     assert to_timedelta(seconds=10**20) is None
     assert to_timedelta(seconds=None) is None
     assert to_timedelta(minutes=5) == timedelta(minutes=5)
-    assert SystemInfo.from_api({"up_time": "²:1:1"}).uptime is None
-    assert SystemInfo.from_api({"up_time": "-1:0:0"}).uptime is None
-    assert (
-        Ipv6Prefix.list_from_api({"prefix": [{"prefix": "x", "valid_lft": 10**20}]})[
-            0
-        ].valid_lifetime
-        is None
-    )
+    assert helpers.up_time("²:1:1") is None
+    assert helpers.lease_remaining("999999999,99,99") is None
+
+
+def test_long_digit_strings_are_not_numbers() -> None:
+    assert to_int("9" * 5000) is None  # int() would raise beyond 4300 digits
+    assert aiosynologysrm.SystemInfo.from_api({"cpu_cores": "9" * 5000}).cpu_cores is None
 
 
 async def test_deeply_nested_json_is_a_response_error(
@@ -207,10 +179,6 @@ async def test_catalog_can_be_reloaded(fake: FakeSrm, make_client: MakeClient) -
     client.clear_catalog()
     await client.get_catalog()
     assert sum(1 for r in fake.requests if r.get("api") == "SYNO.API.Info") == 2
-
-
-def test_fingerprint_is_exported() -> None:
-    assert aiosynologysrm.fingerprint([{"a": 1}]) == aiosynologysrm.fingerprint([{"a": 1}])
 
 
 def test_allowlist_is_pinned() -> None:

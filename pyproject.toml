@@ -67,7 +67,7 @@ source = ["aiosynologysrm"]
 branch = true
 
 [tool.coverage.report]
-fail_under = 90
+fail_under = 100
 show_missing = true
 exclude_also = ["if TYPE_CHECKING:"]
 
@@ -91,3 +91,5 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "D", "PLR2004", "S105", "S106"]
 "scripts/**" = ["D", "T201", "S603", "S607"]
+# Model fields are declared with srm(), which returns a dataclasses.field() like field() itself.
+"src/aiosynologysrm/{models,network,hardware,firewall}.py" = ["RUF009"]

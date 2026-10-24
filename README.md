@@ -53,6 +53,7 @@ since 2023. This library starts fresh for today's needs:
 | **Credentials** | sent in the POST body, never in a URL or an error message |
 | **Firmware differences** | checks what each router offers: `supports()` tells you up front, and a call the router lacks raises `SrmUnsupportedError` instead of guessing |
 | **Mesh and standalone access points** | in scope, including telling which device a client is on; mesh setups are not tested yet |
+| **SRM's own data model** | one getter per SRM call, fields named as SRM names them; derived values in a separate `helpers` module |
 | **Typed and tested** | strict typing, tests against anonymized answers of real routers |
 
 ## Which devices work?
@@ -101,11 +102,11 @@ async def main() -> None:
             ssl=False,  # SRM ships a self-signed certificate; better: pin it, see below
         ) as client:
             info = await client.get_system_info()
-            print(info.model, info.firmware_version)
+            print(info.model, info.firmware_ver)
 
             devices = await client.get_network_devices()
             for device in devices.devices:
-                if device.online:
+                if device.is_online:
                     print(device.mac, device.hostname, device.connection)
 
 
@@ -126,7 +127,9 @@ client = SrmClient(..., ssl=aiohttp.Fingerprint(bytes.fromhex(fingerprint)))
 ```
 
 A renewed certificate then raises `SrmCertificateError` until the new fingerprint is confirmed.
-`ssl` also takes `False` or an `ssl.SSLContext`.
+`ssl` also takes `False` or an `ssl.SSLContext`. `ssl=True` uses the aiohttp session's own
+setting, so with a session that does not verify certificates nothing is checked; pin a fingerprint
+or pass an `SSLContext` instead.
 
 Two-factor authentication works for interactive use only: `otp_code` is sent with the first login
 and never again. When the session ends, the next login raises `SrmTwoFactorRequiredError` and
@@ -135,32 +138,43 @@ account without two-factor authentication.
 
 ## What it can read
 
-| Method | Returns |
-| --- | --- |
-| `get_system_info()` | model, firmware, CPU, RAM, uptime |
-| `get_utilization()` | CPU and memory load, traffic per interface |
-| `get_network_devices()` | every known client: online state, IP addresses, Wi-Fi band and signal |
-| `get_operating_mode()` | router or standalone access point |
-| `get_wan_status()` | internet connection state for IPv4 and IPv6 |
-| `get_external_addresses()` | public IPv4 and IPv6 address, as SRM last recorded them (can be out of date) |
-| `get_ipv6_prefixes()` | delegated IPv6 prefixes and which local network uses them |
-| `get_dhcp_servers()` | DHCP ranges, gateway, DNS and lease time per local network |
-| `get_dhcp_leases()` | handed-out addresses (IPv4 and IPv6) with remaining lease time |
-| `get_dhcp_reservations()` | fixed address assignments |
-| `get_firewall_rules()` | default policies and every rule with its hit counter |
-| `get_forward_rules()` | firewall openings SRM created for port forwards, DMZ and UPnP |
-| `get_port_forwards()` | port forwards, including those devices opened through UPnP |
-| `get_port_triggers()` | port triggering rules |
-| `get_security_settings()` | SRM access from the internet, automatic openings, auto block |
-| `get_wifi_radios()` | each Wi-Fi radio: channel in use, automatic or fixed, width, power, BSSID |
-| `get_wifi_clients()` | signal, link rate, connection time and traffic of each Wi-Fi client |
-| `get_ethernet_ports()` | link state and speed of every Ethernet port |
-| `get_mesh_nodes()` | the router and its mesh points with status and client count |
-| `get_usb_volumes()` | USB storage: file system, size, free space |
+Each getter sends one SRM call and returns its answer as a typed model. Field names are SRM's own
+keys in snake_case, including SRM's spelling (`is_baned`), so SRM's documentation and the web
+interface's requests map 1:1. Values keep SRM's units and formats; `raw` holds the complete object.
 
-`FirewallRules` and `SecuritySettings` have a `fingerprint` property: a hash without hit
-counters, so you can detect configuration changes without comparing field by field. For any other
-list, `aiosynologysrm.fingerprint(item.raw for item in items)` gives the same kind of hash.
+| Method | SRM API | Returns |
+| --- | --- | --- |
+| `get_system_info()` | `SYNO.Core.System` | model, firmware, CPU, RAM, uptime, clock, USB devices |
+| `get_utilization()` | `SYNO.Core.System.Utilization` | CPU and memory load, traffic per interface |
+| `get_network_devices()` | `SYNO.Core.Network.NSM.Device` | every known client: online state, addresses, Wi-Fi band and signal |
+| `get_topology()` | `SYNO.Core.Network.Router.Topology` | router or standalone access point |
+| `get_connection_status()` | `SYNO.Core.Network.Router.ConnectionStatus` | WAN state and the WAN interface's own address, live |
+| `get_external_ip()` | `SYNO.Core.DDNS.ExtIP` | the addresses the internet sees, as SRM last recorded them |
+| `get_ipv6_prefixes()` | `SYNO.Core.Network.IPv6.Router.Prefix` | delegated prefixes and the local network using each |
+| `get_dhcp_servers()` | `SYNO.Core.Network.DHCPServer` | DHCP ranges, gateway, DNS, lease time per local network |
+| `get_dhcp_clients()` | `SYNO.Core.Network.DHCPServer.ClientList` | handed-out addresses with remaining lease time |
+| `get_dhcp_reservations()` | `SYNO.Core.Network.DHCPServer.Reservation` | fixed address assignments |
+| `get_firewall_rules()` | `SYNO.Core.Security.Firewall.Rules` | default policies and the rule list |
+| `get_firewall_hit_counts()` | `SYNO.Core.Security.Firewall.Rules.HitCount` | packet counters per kernel rule |
+| `get_forward_rules()` | `SYNO.Core.Security.Firewall.Forward.Rules` | firewall openings for port forwards, DMZ, UPnP |
+| `get_port_forwards()` | `SYNO.Core.Network.Router.PortForward` | port forwards, including UPnP |
+| `get_port_triggers()` | `SYNO.Core.Network.Router.PortTrigger` | port triggering rules |
+| `get_allow_srm_from_wan()` | `SYNO.Core.Security.Firewall.AllowSrmFromWan` | whether SRM itself is reachable from the internet |
+| `get_firewall_conf()` | `SYNO.Core.Security.Firewall.Conf` | general firewall settings |
+| `get_forward_conf()` | `SYNO.Core.Security.Firewall.Forward.Conf` | automatic openings for port forwards, DMZ, UPnP |
+| `get_auto_block()` | `SYNO.Core.Security.AutoBlock` | blocking after failed logins |
+| `get_wifi_radio_settings()` | `SYNO.Wifi.Radio.Setting` | channel (0 = automatic), width, power per radio |
+| `get_wifi_radio_status()` | `SYNO.Wifi.Radio.Status` | channel in use and BSSID per radio |
+| `get_wifi_devices()` | `SYNO.Wifi.Device` | signal, link rate, connection time, traffic of each Wi-Fi client |
+| `get_eth_port_info()` | `SYNO.Mesh.Network.EthPortInfo` | link state and speed of every Ethernet port |
+| `get_mesh_nodes()` | `SYNO.Mesh.Node.List` | the router and its mesh points |
+| `get_usb_volumes()` | `SYNO.Core.Storage.Volume` | USB storage: file system, size, free space |
+
+Anything derived is in `aiosynologysrm.helpers`, kept apart from the models on purpose: the
+classification of an address (`address_scope`: public, private, carrier-grade NAT), summed hit
+counters per rule (`hits_by_rule`), radio settings paired with their live state (`pair_radios`),
+durations and dates from SRM's text (`up_time`, `lease_remaining`, `firmware_date`), used space,
+and `config_hash()` to detect configuration changes from the models' `raw`.
 
 See the [changelog](https://github.com/eizedev/aiosynologysrm/blob/main/CHANGELOG.md) for what each
 release adds.
@@ -174,8 +188,8 @@ prints a JSON report to paste into an issue. It contains exactly this:
 - whether the WAN IPv4 address is `public`, `private` or `cgnat` (the category, not the address)
 - the minimum and maximum version of each API the library uses
 - for every getter: whether it works or which error code it returned, how many items it returned
-  (leave this out with `--no-counts`), the type of every field (`str`, `int`, `None`, ...) and the
-  names of the fields SRM sent
+  (leave this out with `--no-counts`), the type of every field (`str`, `int`, `None`, ...) and how
+  many keys SRM sent that the library does not map yet (only the number, never the names)
 
 It contains no addresses, host names, network names or other values. GitHub issues in a public
 repository are always public, so read the output before posting it. The password comes from

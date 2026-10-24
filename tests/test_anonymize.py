@@ -178,10 +178,10 @@ def test_main_refuses_and_writes(tmp_path: Path, capsys: pytest.CaptureFixture[s
     [
         ({"aa:bb:cc:11:22:33": {"band": "5G"}}, "look like addresses"),
         ({"Annas Laptop": 1}, "look like addresses"),
-        ({"status": "connected to 10.1.2.3"}, "new values under kept keys (status)"),
-        ({"profile": "Annas Kinderprofil"}, "new values under kept keys (profile)"),
-        ({"model": "Annas Laptop"}, "new values under kept keys (model)"),
-        ({"firmware_ver": "custom build"}, "new values under kept keys (firmware_ver)"),
+        ({"status": "connected to 10.1.2.3"}, "new values under kept or address keys (status)"),
+        ({"profile": "Annas Kinderprofil"}, "new values under kept or address keys (profile)"),
+        ({"model": "Annas Laptop"}, "new values under kept or address keys (model)"),
+        ({"firmware_ver": "custom build"}, "new values under kept or address keys (firmware_ver)"),
         ({"pin": 1234}, "numbers under unclassified keys (pin)"),
     ],
 )
@@ -198,4 +198,36 @@ def test_unknown_keys_values_and_numbers_are_refused(data: dict[str, Any], probl
 def test_secret_numbers_are_replaced() -> None:
     a = anonymize.Anonymizer()
     assert a.walk({"serial": 1234567890, "attempts": 10}) == {"serial": 0, "attempts": 10}
+    a.check()
+
+
+def test_text_in_an_address_field_is_refused() -> None:
+    a = anonymize.Anonymizer()
+    out = a.walk({"ntp_server": "fritzbox", "dns1": "10.0.0.1", "dst_ip_value": "10.0.0.0/24"})
+    assert out["dns1"] != "10.0.0.1"
+    with pytest.raises(anonymize.UnknownKeyError, match="ntp_server"):
+        a.check()
+
+
+def test_keys_are_checked_for_leaks() -> None:
+    a = anonymize.Anonymizer()
+    a.walk({"ip": "10.20.30.40", "hostname": "johnsiphone"})
+    assert anonymize.leaks({"10.20.30.40": 1}, a) == ["10.20.30.40"]
+    assert anonymize.leaks({"johnsiphone": 1}, a) == ["johnsiphone"]
+    b = anonymize.Anonymizer()
+    b.walk({"hostname": "mac"})
+    assert anonymize.leaks({"mac": "02:00:00:00:00:01"}, b) == []  # an SRM field name
+
+
+def test_clock_and_rare_device_types_are_neutral() -> None:
+    a = anonymize.Anonymizer()
+    out = a.walk(
+        {
+            "time": "2026-10-24 11:20:52",
+            "devices": [{"dev_type": "water_heater"}, {"dev_type": "tv"}],
+        }
+    )
+    assert out["time"] == "2026-01-01 00:00:00"
+    assert [d["dev_type"] for d in out["devices"]] == ["other", "tv"]
+    assert a.walk({"time": 1792833653}) == {"time": 1767225600}
     a.check()

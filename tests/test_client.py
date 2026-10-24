@@ -18,6 +18,7 @@ from aiosynologysrm import (
     SrmNotAllowedError,
     SrmPermissionError,
     SrmResponseError,
+    SrmSessionError,
     SrmTimeoutError,
     SrmTwoFactorRequiredError,
     SrmUnsupportedError,
@@ -119,13 +120,13 @@ async def test_expired_session_logs_in_again_once(fake: FakeSrm, make_client: Ma
     assert fake.logins == 2
 
 
-async def test_repeated_session_error_is_authentication_error(
+async def test_repeated_session_error_is_a_session_error(
     fake: FakeSrm, make_client: MakeClient
 ) -> None:
     client = make_client()
     await client.login()
     fake.errors[("SYNO.Core.System", "info")] = 106
-    with pytest.raises(SrmAuthenticationError):
+    with pytest.raises(SrmSessionError):
         await client.get_system_info()
 
 
@@ -211,6 +212,8 @@ def test_write_methods_cannot_be_specified() -> None:
         ReadSpec("SYNO.Core.System", "set", (1,))
     with pytest.raises(ValueError, match="at least one version"):
         ReadSpec("SYNO.Core.System", "get", ())
+    with pytest.raises(ValueError, match="parameters may not set"):
+        ReadSpec("SYNO.Core.System", "get", (1,), (("method", "set"),))
 
 
 @pytest.mark.parametrize(
@@ -276,6 +279,15 @@ def test_ipv6_host_is_bracketed(http: aiohttp.ClientSession) -> None:
     assert client._base_url == "https://[fd00::1]:8001/webapi"
 
 
+def test_only_ipv6_addresses_get_brackets(http: aiohttp.ClientSession) -> None:
+    def url(host: str) -> str:
+        return SrmClient(host, "u", "p", session=http, port=8001)._base_url
+
+    assert url("fe80::1") == "https://[fe80::1]:8001/webapi"
+    assert url("192.0.2.1") == "https://192.0.2.1:8001/webapi"
+    assert url("router.example") == "https://router.example:8001/webapi"
+
+
 def test_default_ports(http: aiohttp.ClientSession) -> None:
     assert SrmClient("h", "u", "p", session=http)._base_url.endswith(":8001/webapi")
     assert SrmClient("h", "u", "p", session=http, use_https=False)._base_url.endswith(
@@ -304,13 +316,13 @@ async def test_body_over_the_limit(
         await make_client().get_network_devices()
 
 
-async def test_supports_a_getter_as_a_whole(fake: FakeSrm, make_client: MakeClient) -> None:
+async def test_supports_a_getter(fake: FakeSrm, make_client: MakeClient) -> None:
     client = make_client()
-    assert await client.supports(client.get_wifi_radios)
+    assert await client.supports(client.get_wifi_radio_status)
     del fake.catalog["SYNO.Wifi.Radio.Status"]
     client.clear_catalog()
-    assert not await client.supports(client.get_wifi_radios)  # one of its two reads is missing
-    assert await client.supports(client.get_wifi_clients)
+    assert not await client.supports(client.get_wifi_radio_status)
+    assert await client.supports(client.get_wifi_devices)
     with pytest.raises(TypeError):
         await client.supports(client.get_catalog)
     with pytest.raises(TypeError):

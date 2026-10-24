@@ -62,13 +62,21 @@ uv run pytest --cov
   `python scripts/anonymize.py <raw.json> tests/fixtures/<model>-srm-<version>/<name>.json`.
   The script refuses to write anything when a text field is not classified yet (add it to one of
   its lists) or an original value is left; check the output by eye as well before committing.
-- **Units only when verified.** Name a field `_percent`, `_kib`, `_mbps` etc. only if you checked
-  the unit on a router; otherwise keep SRM's number and end the name in `_raw`.
+- **Models mirror SRM.** Name fields after SRM's keys (snake_case, see docs/design.md, "Data
+  model"), keep SRM's units and formats, and put anything derived into `helpers.py`. Document a
+  unit in the field's docstring only if you checked it on a router.
 - Update [docs/compatibility.md](docs/compatibility.md) and [CHANGELOG.md](CHANGELOG.md).
 - Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/)
   (`feat:`, `fix:`, `docs:`, ...).
 
 ## Releases
 
-Maintainers tag `vX.Y.Z` on `main`. The release workflow tests, builds, publishes to PyPI via
-trusted publishing and creates the GitHub release. No tokens are stored in the repository.
+Maintainers tag `vX.Y.Z` on `main`. The release workflow runs the full CI, builds, publishes to
+PyPI via trusted publishing and creates the GitHub release. No tokens are stored in the repository.
+The build requirements are pinned with hashes in `build-constraints.txt`; refresh them with
+
+```sh
+printf 'hatchling>=1.27\nhatch-vcs>=0.4\n' | uv pip compile - --generate-hashes --python-version 3.12 --no-header -o build-constraints.txt
+```
+
+and put the two comment lines at the top back.

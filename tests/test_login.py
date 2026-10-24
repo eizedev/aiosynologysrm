@@ -34,7 +34,12 @@ async def test_concurrent_reads_after_a_failed_login_try_once(
 ) -> None:
     client = make_client(password="wrong", max_concurrency=4)
     with pytest.raises(SrmAuthenticationError):
-        await client.get_security_settings()  # four reads in parallel
+        await asyncio.gather(
+            client.get_allow_srm_from_wan(),
+            client.get_firewall_conf(),
+            client.get_forward_conf(),
+            client.get_auto_block(),
+        )
     await asyncio.sleep(0.05)  # let the other reads finish
     assert _logins(fake) == 1
 

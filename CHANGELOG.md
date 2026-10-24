@@ -6,6 +6,41 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking: the models mirror SRM's answers**, following Home Assistant's guidance for API
+  libraries ("keep the names and the structure", "represent data, do not interpret it"). Every
+  getter sends one SRM call and returns one model per answer; field names are SRM's keys in
+  snake_case (`ip_addr`, `is_online`, `transfer_rx_rate`, `net_topology`, `is_baned`); values keep
+  SRM's units and formats. Renamed getters: `get_topology`, `get_connection_status`,
+  `get_external_ip`, `get_dhcp_clients`, `get_wifi_devices`, `get_eth_port_info`. Split getters:
+  `get_firewall_hit_counts`, `get_wifi_radio_settings` / `get_wifi_radio_status`,
+  `get_allow_srm_from_wan`, `get_firewall_conf`, `get_forward_conf`, `get_auto_block`.
+- **Breaking:** derived values moved to `aiosynologysrm.helpers`: `address_scope`, `hits_by_rule`,
+  `pair_radios`, `up_time`, `firmware_date`, `lease_remaining`, `split_addresses`,
+  `cpu_total_percent`, `used_percent`, `is_root`, `normalize_mac`, and `config_hash` (was
+  `fingerprint()` and the `fingerprint` properties).
+- `address_scope()` returns `None` for `0.0.0.0` and `::`, and `other` for documentation,
+  benchmarking and loopback ranges instead of `private`.
+- Two session errors in a row raise the new `SrmSessionError` instead of
+  `SrmAuthenticationError`, so callers do not ask for new credentials that are fine.
+- `ssl=True` is documented as what it is: aiohttp's default, which follows the session's own
+  certificate setting.
+- Diagnostics: a failing call no longer ends the report; keys the library does not map are only
+  counted, never named; the certificate question goes to stderr; a malformed `--fingerprint` is a
+  clear error.
+- The anonymizer also checks keys for leaks, refuses text in address fields, and replaces rare
+  device types and the recording's clock; fixtures regenerated.
+- Releases build with pinned, hash-checked build requirements (`build-constraints.txt`); coverage
+  must stay at 100 %.
+
+### Fixed
+
+- Digit strings longer than Python's `int()` limit raised `ValueError`; they are `None` now.
+- A read spec's parameters could override `api`, `method` or `version`; they are sent first and
+  may not name those keys.
+- A host given as `name:port` was bracketed like an IPv6 address.
+
 ### Added
 
 - `aiosynologysrm-diagnostics --no-counts` and `collect_diagnostics(client, counts=False)` leave
