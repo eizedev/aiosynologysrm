@@ -13,7 +13,8 @@ Vulnerabilities in SRM itself belong to [Synology](https://www.synology.com/secu
 Please report privately via GitHub's
 [Report a vulnerability](https://github.com/eizedev/aiosynologysrm/security/advisories/new)
 (`Security` tab, `Advisories`, `Report a vulnerability`), not in a public issue. This opens a
-private discussion until a fix is released.
+private discussion until a fix is released. If you cannot use GitHub, email `oss@eize.dev`
+instead.
 
 Please include the library version, your router model and SRM version, and how to reproduce it.
 Do not include passwords, session ids or unredacted router output.
