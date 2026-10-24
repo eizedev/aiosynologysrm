@@ -6,6 +6,44 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-24
+
+### Added
+
+- `helpers.locate_clients()` with `SourceView`, `ClientLocation` and `Basis`: combines the client
+  lists of a router and its access points into one answer per client (source device, Wi-Fi or
+  wired, radio, signal, mesh node, the device's own entry). Each device's own Wi-Fi list wins
+  over the router's view, the newest association wins after roaming, and `incomplete` marks
+  results from incomplete input (a device unreachable, a Wi-Fi list missing, a device list
+  truncated), so a tracker keeps the last trusted location instead of flapping.
+- `get_certificate_fingerprint(..., ssl_context=...)` to reuse an existing non-verifying context.
+- README: which error maps to which Home Assistant reaction.
+
+### Changed
+
+- **Breaking:** `SrmCertificateError` is no longer a `SrmConnectionError`, and `SrmBlockedError`
+  no longer a `SrmAuthenticationError`: retrying a changed certificate does not help, and a
+  blocked address does not mean wrong credentials. Only a failed certificate verification or a
+  fingerprint mismatch raises `SrmCertificateError`; other TLS errors (an aborted handshake while
+  the router restarts) are `SrmConnectionError`s.
+- `SrmAuthenticationError` is raised for the login codes that need the user (400-402, 408-410)
+  and is remembered; other login codes are plain `SrmApiError`s and not remembered, because they
+  can come from a restarting router.
+- Concurrent calls share one catalog request and one login attempt and get the same result or
+  error: an unreachable router costs one timeout per round instead of one per call, and a
+  failing login one attempt.
+- `login()` on a client that is logged in closes the replaced session; `logout()` ignores every
+  `SrmError`.
+- When the router refuses a version its catalog offered (102-104), the client reads the catalog
+  again once, so a firmware update does not leave it stuck.
+- Diagnostics respect a remembered failed login instead of trying again, keep the report when one
+  call fails (also with a certificate error), and run the getters concurrently (still limited by
+  `max_concurrency`).
+- Whole floats (`12.0`) are accepted as integers; a boolean error code is a response error.
+- The plain-HTTP warning is logged once per host.
+- Units measured against kernel counters: `Utilization` network rates are bytes per second,
+  `load_*` the load averages times 100.
+
 ## [0.5.0] - 2026-10-24
 
 ### Changed
@@ -196,7 +234,8 @@ These names are gone; use the replacement on the right.
 - `scripts/anonymize.py` to turn real router answers into publishable test fixtures.
 - Fixtures from an RT2600ac with SRM 1.3.2.
 
-[Unreleased]: https://github.com/eizedev/aiosynologysrm/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/eizedev/aiosynologysrm/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/eizedev/aiosynologysrm/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/eizedev/aiosynologysrm/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/eizedev/aiosynologysrm/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/eizedev/aiosynologysrm/compare/v0.2.0...v0.3.0

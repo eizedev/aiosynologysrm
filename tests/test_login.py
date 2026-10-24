@@ -13,9 +13,11 @@ import pytest
 from aiosynologysrm import (
     SrmApiError,
     SrmAuthenticationError,
+    SrmCertificateError,
     SrmClient,
     SrmConnectionError,
     SrmError,
+    SrmResponseError,
     SrmTimeoutError,
     SrmTwoFactorRequiredError,
 )
@@ -144,13 +146,15 @@ async def test_errors_and_logs_never_contain_secrets(
         assert secret not in caplog.text
 
 
-async def test_plain_http_is_logged(
+async def test_plain_http_is_logged_once_per_host(
     http: aiohttp.ClientSession, caplog: pytest.LogCaptureFixture
 ) -> None:
-    SrmClient("192.0.2.1", "u", "p", session=http)
+    SrmClient("198.51.100.7", "u", "p", session=http)
     assert "plain HTTP" not in caplog.text
-    SrmClient("192.0.2.1", "u", "p", session=http, use_https=False)
-    assert "plain HTTP" in caplog.text
+    SrmClient("198.51.100.7", "u", "p", session=http, use_https=False)
+    assert caplog.text.count("plain HTTP") == 1
+    SrmClient("198.51.100.7", "u", "p", session=http, use_https=False)
+    assert caplog.text.count("plain HTTP") == 1
 
 
 async def test_connection_errors_keep_their_cause(http: aiohttp.ClientSession) -> None:
@@ -158,3 +162,112 @@ async def test_connection_errors_keep_their_cause(http: aiohttp.ClientSession) -
     with pytest.raises(SrmConnectionError) as err:
         await client.get_catalog()
     assert isinstance(err.value.__cause__, aiohttp.ClientError)
+
+
+class _FailingSession:
+    """A stand-in for aiohttp.ClientSession whose requests raise a given aiohttp error."""
+
+    def __init__(self, error: type[BaseException]) -> None:
+        self.error = error
+
+    def post(self, *_: Any, **__: Any) -> Any:
+        raise self.error.__new__(self.error)  # aiohttp's constructors need a live connection
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (aiohttp.ClientConnectorSSLError, SrmConnectionError),  # e.g. handshake aborted on reboot
+        (aiohttp.ClientConnectorCertificateError, SrmCertificateError),
+        (aiohttp.ServerFingerprintMismatch, SrmCertificateError),
+    ],
+)
+async def test_only_certificate_problems_are_certificate_errors(
+    error: type[BaseException], expected: type[SrmError]
+) -> None:
+    client = SrmClient("192.0.2.1", "u", "p", session=_FailingSession(error))  # type: ignore[arg-type]
+    with pytest.raises(expected) as err:
+        await client.get_catalog()
+    assert type(err.value) is expected
+
+
+async def test_logout_ignores_certificate_errors(fake: FakeSrm, make_client: MakeClient) -> None:
+    client = make_client()
+    await client.login()
+    client._session = _FailingSession(aiohttp.ServerFingerprintMismatch)  # type: ignore[assignment]
+    await client.logout()  # must not raise, e.g. while Home Assistant unloads an entry
+    assert not client.logged_in
+
+
+@pytest.mark.parametrize("code", [401, 402, 408, 409, 410])
+async def test_codes_that_need_the_user_are_remembered(
+    fake: FakeSrm, make_client: MakeClient, code: int
+) -> None:
+    fake.login_error = code
+    client = make_client()
+    for _ in range(2):
+        with pytest.raises(SrmAuthenticationError):
+            await client.get_system_info()
+    assert _logins(fake) == 1
+
+
+async def test_an_unreachable_router_costs_one_catalog_attempt_per_round(
+    http: aiohttp.ClientSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = SrmClient("192.0.2.1", "u", "p", session=http, use_https=False, timeout=1)
+    sent: list[str] = []
+
+    async def post(cgi: str, data: Any) -> Any:
+        sent.append(cgi)
+        await asyncio.sleep(0.01)
+        raise SrmTimeoutError("No answer within the timeout")
+
+    monkeypatch.setattr(client, "_post", post)
+    results = await asyncio.gather(
+        *(client.get_system_info() for _ in range(6)), return_exceptions=True
+    )
+    assert all(isinstance(r, SrmTimeoutError) for r in results)
+    assert sent == ["query.cgi"]
+    with pytest.raises(SrmTimeoutError):
+        await client.get_system_info()  # the next round tries again
+    assert sent == ["query.cgi", "query.cgi"]
+
+
+async def test_concurrent_reads_share_one_failing_login(
+    fake: FakeSrm, make_client: MakeClient
+) -> None:
+    fake.login_error = 117  # not remembered, so only sharing keeps this at one attempt
+    client = make_client()
+    await client.get_catalog()
+    results = await asyncio.gather(
+        *(client.get_system_info() for _ in range(4)), return_exceptions=True
+    )
+    assert all(type(r) is SrmApiError for r in results)
+    assert _logins(fake) == 1
+
+
+async def test_login_again_logs_out_the_old_session(fake: FakeSrm, make_client: MakeClient) -> None:
+    client = make_client()
+    await client.login()
+    await client.login()
+    assert fake.logouts == 1
+    assert client.logged_in
+
+
+async def test_boolean_error_codes_are_not_numbers(fake: FakeSrm, make_client: MakeClient) -> None:
+    fake.raw_body = b'{"success": false, "error": {"code": true}}'
+    with pytest.raises(SrmResponseError):
+        await make_client().login()
+
+
+async def test_login_waits_for_a_login_in_progress(fake: FakeSrm, make_client: MakeClient) -> None:
+    client = make_client()
+    await client.get_catalog()
+    fake.delay = 0.05
+    first = asyncio.create_task(client.get_system_info())  # starts the automatic login
+    await asyncio.sleep(0.01)
+    await client.login()
+    await first
+    assert client.logged_in
+    assert _logins(fake) == 2
+    assert fake.logouts == 1  # the session the automatic login opened is closed again

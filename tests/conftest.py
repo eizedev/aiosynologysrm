@@ -91,6 +91,7 @@ class FakeSrm:
     catalog: dict[str, dict[str, Any]] = field(default_factory=catalog)
     responses: dict[tuple[str, str], Any] = field(default_factory=lambda: responses(RT2600AC))
     errors: dict[tuple[str, str], int] = field(default_factory=dict)
+    errors_by_version: dict[tuple[str, str], int] = field(default_factory=dict)
     login_error: int | None = None
     require_otp: bool = False
     expire_next_request: bool = False
@@ -141,6 +142,8 @@ class FakeSrm:
         key = (form["api"], form["method"])
         if key in self.errors:
             return self.fail(self.errors[key])
+        if (form["api"], form.get("version", "")) in self.errors_by_version:
+            return self.fail(self.errors_by_version[(form["api"], form["version"])])
         if key not in self.responses:
             return self.fail(103)
         required = REQUIRED_PARAMS.get(key, {})

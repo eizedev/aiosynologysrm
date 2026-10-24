@@ -98,12 +98,18 @@ SRM devices run as **router**, as **mesh point** of a router, or as **standalone
 
 The mode also matters for client data: in a mesh, the router knows which node each client uses
 (`mesh_node_id`); behind a standalone access point, the router sees that access point's Wi-Fi
-clients as wired devices, and only the access point knows they are on Wi-Fi. Combining the lists
-of several devices is planned as a library helper.
+clients as wired devices, and only the access point knows they are on Wi-Fi.
+`helpers.locate_clients()` combines the lists of a router and its access points into one answer
+per client: device, connection, radio and signal, from each device's own Wi-Fi list where there
+is one. Wired clients behind an access point's LAN port cannot be told apart from those on the
+router, because the access point does not report them.
 
 A mesh point cannot be managed directly: it has no SRM interface of its own, only a few actions in
 the main router's SRM. Connect to the main router; it reports the mesh points
-(`get_mesh_nodes()`) and which node each client uses. Mesh setups are untested otherwise: the
+(`get_mesh_nodes()`) and which node each client uses. A mesh node carries no serial number or MAC
+address in the recorded answers, and `node_id` is assigned per router, so until a mesh setup is
+checked, identify a mesh point by the router's serial number plus `node_id` and expect that to
+change. Mesh setups are untested otherwise: the
 fixtures come from a router and a standalone access point
 ([#12](https://github.com/eizedev/aiosynologysrm/issues/12)).
 

@@ -2,7 +2,8 @@
 
 The models represent SRM's data as SRM sends it. Everything here interprets it: joins, sums,
 durations, classifications. Each function documents its rule, so callers can decide whether it
-fits their use. All of them are tolerant: input they cannot interpret gives ``None``.
+fits their use. All of them are tolerant: input they cannot interpret gives ``None`` or is
+skipped.
 """
 
 from __future__ import annotations
@@ -11,17 +12,28 @@ import hashlib
 import ipaddress
 import json
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any, Literal
 
 from ._parse import normalize_mac, to_timedelta
 from .firewall import FirewallHitCount
-from .hardware import MeshNode, StorageVolume, WifiRadioSetting, WifiRadioState
-from .models import UtilizationCpu
+from .hardware import (
+    MeshNode,
+    StorageVolume,
+    WifiDevice,
+    WifiDevices,
+    WifiRadioSetting,
+    WifiRadioState,
+)
+from .models import NetworkDevice, NetworkDevices, UtilizationCpu
 
 __all__ = [
     "AddressScope",
+    "Basis",
+    "ClientLocation",
+    "SourceView",
     "address_scope",
     "config_hash",
     "cpu_total_percent",
@@ -29,6 +41,7 @@ __all__ = [
     "hits_by_rule",
     "is_root",
     "lease_remaining",
+    "locate_clients",
     "normalize_mac",
     "pair_radios",
     "split_addresses",
@@ -157,3 +170,169 @@ def config_hash(payloads: Iterable[Mapping[str, Any]], ignore: frozenset[str] = 
     canonical = [{k: v for k, v in sorted(item.items()) if k not in ignore} for item in payloads]
     data = json.dumps(canonical, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(data.encode()).hexdigest()
+
+
+@dataclass(frozen=True, slots=True)
+class SourceView:
+    """What one SRM device (router or access point) reported, under a name the caller chooses.
+
+    Pass a view for every device you expect, also when it could not be read: ``devices=None``
+    says it was unreachable, ``wifi=None`` that its Wi-Fi list is missing. Both make the result
+    ``incomplete``, so a missing access point cannot silently move its clients to the router.
+    """
+
+    name: str
+    devices: NetworkDevices | None
+    """The device's ``get_network_devices()``; ``None`` when it could not be read."""
+    wifi: WifiDevices | None = None
+    """The device's ``get_wifi_devices()``, its own radios' clients; ``None`` when not read."""
+
+
+Basis = Literal["wifi_list", "device_list", "offline"]
+
+
+@dataclass(frozen=True, slots=True)
+class ClientLocation:
+    """Where a client is, combined from several SRM devices (see :func:`locate_clients`)."""
+
+    mac: str
+    """Normalized, ``aa:bb:cc:dd:ee:ff``; :func:`normalize_mac` gives the same for SRM's values."""
+    online: bool
+    """In a Wi-Fi list, or reported online by a device."""
+    source: str | None
+    """Name of the :class:`SourceView` it is attached to; ``None`` when offline everywhere."""
+    connection: str | None
+    """``wifi`` or ``ethernet``, as far as it is known."""
+    basis: Basis
+    """How the location was found: ``wifi_list`` (the device's own Wi-Fi list, the reliable
+    source), ``device_list`` (a device's client list, which can lag behind or be stale), or
+    ``offline`` (no device reports the client online)."""
+    incomplete: bool
+    """A view was unreachable, lacked its Wi-Fi list or had a truncated device list: the client
+    may really be elsewhere. A device tracker should then keep the last location it trusted."""
+    radio_type: str | None = None
+    signal: int | None = None
+    mesh_node_id: int | None = None
+    """The mesh node the chosen device reports for the client; ids are per device."""
+    mesh_node_name: str | None = None
+    entry: NetworkDevice | None = None
+    """The chosen device's own entry for the client (hostname, addresses), if it has one."""
+
+
+def locate_clients(views: Sequence[SourceView]) -> dict[str, ClientLocation]:
+    """Tell, for every client the devices know, which device it is attached to and how.
+
+    Pass the main router first, then every access point you expect; view names must be unique.
+    Rules:
+
+    1. A client in a device's own Wi-Fi list is on that device, on that radio (``wifi_list``).
+       The router sees the Wi-Fi clients of a standalone access point as wired devices, and its
+       client list can still say ``wifi`` after a client roamed. If several Wi-Fi lists name
+       the client, the newest association (smallest ``associate_up_time``) wins, then the
+       stronger signal.
+    2. Otherwise the first device that lists the client online decides (``device_list``): a
+       wired client, a Wi-Fi client of a mesh point, or a ``wifi`` entry that may be stale. The
+       radio is then SRM's ``band`` of that entry. Wired clients behind an access point's LAN
+       port cannot be told apart from those on the router.
+    3. A client no device reports online is ``offline`` and has no ``source``.
+
+    ``incomplete`` is set on every result when any view was unreachable, lacked its Wi-Fi list
+    or had a truncated device list. Entries without a valid MAC address are skipped. Measured on
+    a router with one standalone access point; mesh setups are untested.
+    """
+    names = [view.name for view in views]
+    if len(set(names)) != len(names):
+        msg = "every SourceView needs its own name"
+        raise ValueError(msg)
+    incomplete = any(
+        view.devices is None or view.wifi is None or view.devices.exceed_dev_list_max is True
+        for view in views
+    )
+    wifi: dict[str, tuple[str, WifiDevice]] = {}
+    for view in views:
+        for item in view.wifi.device_list if view.wifi else ():
+            mac = normalize_mac(item.mac_address)
+            if mac is not None and (mac not in wifi or _newer(item, wifi[mac][1])):
+                wifi[mac] = (view.name, item)
+    seen: dict[str, list[tuple[str, NetworkDevice]]] = {mac: [] for mac in wifi}
+    for view in views:
+        for device in view.devices.devices if view.devices else ():
+            mac = normalize_mac(device.mac)
+            if mac is not None:
+                seen.setdefault(mac, []).append((view.name, device))
+    return {
+        mac: _locate(mac, wifi.get(mac), entries, incomplete=incomplete)
+        for mac, entries in seen.items()
+    }
+
+
+def _newer(candidate: WifiDevice, current: WifiDevice) -> bool:
+    """Whether ``candidate`` is the client's newer association (then the stronger signal)."""
+    never = 1 << 62
+
+    def key(item: WifiDevice) -> tuple[int, int]:
+        uptime = item.associate_up_time if item.associate_up_time is not None else never
+        return (uptime, -(item.signal if item.signal is not None else -1))
+
+    return key(candidate) < key(current)
+
+
+def _mesh(entry: NetworkDevice | None) -> tuple[int | None, str | None]:
+    """Return the mesh node an online entry names; offline entries and ``-1`` carry none."""
+    node = entry.mesh_node_id if entry is not None and entry.is_online else None
+    if entry is None or node is None or node < 0:
+        return None, None
+    return entry.mesh_node_id, entry.mesh_node_name
+
+
+def _locate(
+    mac: str,
+    wifi: tuple[str, WifiDevice] | None,
+    entries: list[tuple[str, NetworkDevice]],
+    *,
+    incomplete: bool,
+) -> ClientLocation:
+    if wifi is not None:
+        name, item = wifi
+        entry = next((d for view, d in entries if view == name), None)
+        mesh_id, mesh_name = _mesh(entry)
+        return ClientLocation(
+            mac=mac,
+            online=True,
+            source=name,
+            connection="wifi",
+            basis="wifi_list",
+            incomplete=incomplete,
+            radio_type=item.radio_type,
+            signal=item.signal,
+            mesh_node_id=mesh_id,
+            mesh_node_name=mesh_name,
+            entry=entry,
+        )
+    online = next(((view, d) for view, d in entries if d.is_online), None)
+    if online is None:
+        return ClientLocation(
+            mac=mac,
+            online=False,
+            source=None,
+            connection=None,
+            basis="offline",
+            incomplete=incomplete,
+            entry=entries[0][1] if entries else None,
+        )
+    name, entry = online
+    mesh_id, mesh_name = _mesh(entry)
+    on_wifi = entry.connection == "wifi"
+    return ClientLocation(
+        mac=mac,
+        online=True,
+        source=name,
+        connection=entry.connection,
+        basis="device_list",
+        incomplete=incomplete,
+        radio_type=entry.band if on_wifi else None,
+        signal=entry.signalstrength if on_wifi else None,
+        mesh_node_id=mesh_id,
+        mesh_node_name=mesh_name,
+        entry=entry,
+    )

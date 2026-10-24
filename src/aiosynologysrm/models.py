@@ -58,7 +58,10 @@ class SystemInfo(SrmModel):
 
 @dataclass(frozen=True, slots=True)
 class UtilizationCpu(SrmModel):
-    """CPU load in percent; the ``load_*`` values are SRM's load averages, unit not verified."""
+    """CPU load in percent; ``load_*`` are the load averages times 100 (``57`` means 0.57).
+
+    Both checked against the kernel's ``/proc/loadavg`` on an RT2600ac and an MR2200ac.
+    """
 
     device: str | None = srm("device", to_str)
     user_load: int | None = srm("user_load", to_int)
@@ -91,7 +94,11 @@ class UtilizationMemory(SrmModel):
 
 @dataclass(frozen=True, slots=True)
 class UtilizationNetwork(SrmModel):
-    """Current traffic of one interface (``total`` is the sum); unit not verified."""
+    """Current traffic of one interface in bytes per second; ``device`` ``total`` is the sum.
+
+    Checked against the kernel's interface counters on an RT2600ac and an MR2200ac (within about
+    10 % averaged over a minute); a single value is a snapshot and can differ more.
+    """
 
     device: str | None = srm("device", to_str)
     rx: int | None = srm("rx", to_int)
@@ -138,6 +145,7 @@ class NetworkDevice(SrmModel):
     """Mbit/s."""
     rate_quality: str | None = srm("rate_quality", to_str)
     transfer_rx_rate: int | None = srm("transferRXRate", to_int)
+    """Probably bytes per second, like :class:`UtilizationNetwork`; not verified."""
     transfer_tx_rate: int | None = srm("transferTXRate", to_int)
     mesh_node_id: int | None = srm("mesh_node_id", to_int)
     mesh_node_name: str | None = srm("mesh_node_name", to_str)

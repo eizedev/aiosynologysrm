@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import ipaddress
 import json
 import logging
@@ -19,6 +20,7 @@ from .errors import (
     SrmBlockedError,
     SrmCertificateError,
     SrmConnectionError,
+    SrmError,
     SrmNotAllowedError,
     SrmPermissionError,
     SrmResponseError,
@@ -109,10 +111,14 @@ INFO_API: Final = "SYNO.API.Info"
 _SESSION_ERRORS: Final = frozenset({106, 107, 119})  # expired, duplicate login, invalid session id
 _UNSUPPORTED_ERRORS: Final = frozenset({102, 103, 104})  # no such API, method or version
 _PERMISSION_ERRORS: Final = frozenset({105})  # insufficient privilege; 117 is an internal error
+# Wrong credentials, disabled account, no permission, password expired or to be changed: all need
+# the user, so they are remembered.
+_CREDENTIAL_ERRORS: Final = frozenset({400, 401, 402, 408, 409, 410})
 _TWO_FACTOR_ERRORS: Final = frozenset({403, 404, 406})  # code needed, code wrong, 2FA enforced
 _BLOCKED_ERROR: Final = 407  # IP address blocked by auto block
 
 _ALLOWED: Final = frozenset((spec.api, spec.method) for spec in ALL_READS)
+_WARNED_HTTP: set[str] = set()  # hosts warned about plain HTTP, once per process
 
 # The read each getter sends; supports() and the diagnostics use it.
 _GETTER_READS: Final[Mapping[str, tuple[ReadSpec, ...]]] = {
@@ -210,15 +216,19 @@ class SrmClient:
         self._timeout = aiohttp.ClientTimeout(total=timeout)
         self._session_name = session_name
         self._sid: str | None = None
-        self._login_lock = asyncio.Lock()
         self._semaphore = asyncio.Semaphore(max(1, max_concurrency))
         self._catalog: dict[str, Mapping[str, Any]] | None = None
-        self._catalog_lock = asyncio.Lock()
+        # One shared attempt each for the catalog and the login: concurrent callers wait for it
+        # and get its result or its error, so an unreachable router or a failing login costs one
+        # request per round, not one per call.
+        self._catalog_attempt: asyncio.Future[Mapping[str, Mapping[str, Any]]] | None = None
+        self._login_attempt: asyncio.Future[None] | None = None
         self._auth_version: int | None = None
         # The failed login's class, code and API; a fresh exception is raised from it each time,
         # so no traceback (with the password in a frame) is kept or grows.
-        self._login_failure: tuple[type[SrmAuthenticationError], int, str | None] | None = None
-        if not use_https:
+        self._login_failure: tuple[type[SrmApiError], int, str | None] | None = None
+        if not use_https and host not in _WARNED_HTTP:
+            _WARNED_HTTP.add(host)
             _LOGGER.warning("Connecting to %s over plain HTTP: the password is not encrypted", host)
 
     async def __aenter__(self) -> Self:
@@ -269,7 +279,10 @@ class SrmClient:
         # (host, port, reason). Credentials and session ids travel in the body, never in a URL.
         except TimeoutError as err:
             raise SrmTimeoutError("No answer within the timeout") from err
-        except (aiohttp.ClientSSLError, aiohttp.ServerFingerprintMismatch) as err:
+        # Only a failed verification or a pin mismatch means "the certificate is not the one we
+        # trust". Other TLS errors (an aborted handshake while the router restarts) are
+        # connection errors and worth retrying.
+        except (aiohttp.ClientConnectorCertificateError, aiohttp.ServerFingerprintMismatch) as err:
             msg = f"Certificate not trusted ({type(err).__name__})"
             raise SrmCertificateError(msg) from err
         except aiohttp.ClientError as err:
@@ -287,7 +300,7 @@ class SrmClient:
     def _error_code(envelope: Mapping[str, Any]) -> int:
         error = envelope.get("error")
         code = error.get("code") if isinstance(error, Mapping) else None
-        if not isinstance(code, int):
+        if not isinstance(code, int) or isinstance(code, bool):
             raise SrmResponseError("Error response without a numeric code")
         return code
 
@@ -297,16 +310,31 @@ class SrmClient:
         This is also the way to retry after a failed login, for example after an auto block
         expired, or with a fresh two-factor code once a session ended.
         """
-        async with self._login_lock:
-            self._login_failure = None
-            if otp_code:
-                self._otp_code = otp_code
-            await self._login_or_remember()
+        if self._login_attempt is not None:  # let a login in progress finish first
+            with contextlib.suppress(SrmError):
+                await asyncio.shield(self._login_attempt)
+        self._login_failure = None
+        if otp_code:
+            self._otp_code = otp_code
+        previous = self._sid
+        await self._shared_login()
+        if previous is not None and previous != self._sid:
+            await self._logout_sid(previous)  # do not leave the replaced session open
+
+    async def _shared_login(self) -> None:
+        if self._login_attempt is None:
+            self._login_attempt = asyncio.ensure_future(self._login_or_remember())
+        attempt = self._login_attempt
+        try:
+            await asyncio.shield(attempt)
+        finally:
+            if attempt.done() and self._login_attempt is attempt:
+                self._login_attempt = None
 
     async def _login_or_remember(self) -> None:
         try:
             await self._login()
-        except SrmAuthenticationError as err:
+        except (SrmAuthenticationError, SrmBlockedError) as err:
             self._login_failure = (type(err), err.code, err.api)
             raise
 
@@ -352,7 +380,9 @@ class SrmClient:
                 raise SrmTwoFactorRequiredError(code, AUTH_API)
             if code == _BLOCKED_ERROR:
                 raise SrmBlockedError(code, AUTH_API)
-            raise SrmAuthenticationError(code, AUTH_API)
+            if code in _CREDENTIAL_ERRORS:
+                raise SrmAuthenticationError(code, AUTH_API)
+            raise SrmApiError(code, AUTH_API)  # possibly temporary, so not remembered
         data = envelope.get("data")
         sid = data.get("sid") if isinstance(data, Mapping) else None
         if not isinstance(sid, str) or not sid:
@@ -362,34 +392,34 @@ class SrmClient:
 
     async def logout(self) -> None:
         """End the session; errors are ignored because the session expires anyway."""
-        async with self._login_lock:
-            sid, self._sid = self._sid, None
-            if sid is None:
-                return
-            try:
-                await self._post(
-                    "auth.cgi",
-                    {
-                        "api": AUTH_API,
-                        "version": str(self._auth_version or AUTH_VERSIONS[0]),
-                        "method": "logout",
-                        "session": self._session_name,
-                        "_sid": sid,
-                    },
-                )
-            except (SrmConnectionError, SrmResponseError):
-                _LOGGER.debug("Logout from %s failed, ignored", self._base_url)
+        sid, self._sid = self._sid, None
+        if sid is not None:
+            await self._logout_sid(sid)
+
+    async def _logout_sid(self, sid: str) -> None:
+        try:
+            await self._post(
+                "auth.cgi",
+                {
+                    "api": AUTH_API,
+                    "version": str(self._auth_version or AUTH_VERSIONS[0]),
+                    "method": "logout",
+                    "session": self._session_name,
+                    "_sid": sid,
+                },
+            )
+        except SrmError:
+            _LOGGER.debug("Logout from %s failed, ignored", self._base_url)
 
     async def _ensure_login(self, stale_sid: str | None = None) -> str:
-        async with self._login_lock:
-            if self._login_failure is not None:
-                kind, code, api = self._login_failure
-                raise kind(code, api)
-            if self._sid is None or self._sid == stale_sid:
-                await self._login_or_remember()
-            if self._sid is None:  # pragma: no cover - _login either sets it or raises
-                raise SrmResponseError("Login answer has no session id")
-            return self._sid
+        if self._login_failure is not None:
+            kind, code, api = self._login_failure
+            raise kind(code, api)
+        if self._sid is None or self._sid == stale_sid:
+            await self._shared_login()
+        if self._sid is None:  # pragma: no cover - _login either sets it or raises
+            raise SrmResponseError("Login answer has no session id")
+        return self._sid
 
     def clear_catalog(self) -> None:
         """Forget the cached API catalog, e.g. after a firmware update; the next call reloads it."""
@@ -398,21 +428,28 @@ class SrmClient:
 
     async def get_catalog(self) -> Mapping[str, Mapping[str, Any]]:
         """Return the router's API catalog (cached; SRM answers it without login)."""
-        async with self._catalog_lock:
-            return await self._load_catalog()
+        if self._catalog is not None:
+            return self._catalog
+        if self._catalog_attempt is None:
+            self._catalog_attempt = asyncio.ensure_future(self._load_catalog())
+        attempt = self._catalog_attempt
+        try:
+            return await asyncio.shield(attempt)
+        finally:
+            if attempt.done() and self._catalog_attempt is attempt:
+                self._catalog_attempt = None
 
     async def _load_catalog(self) -> Mapping[str, Mapping[str, Any]]:
-        if self._catalog is None:
-            envelope = await self._post(
-                "query.cgi",
-                {"api": INFO_API, "version": "1", "method": "query", "query": "ALL"},
-            )
-            if not envelope["success"]:
-                raise SrmApiError(self._error_code(envelope), INFO_API)
-            data = envelope.get("data")
-            if not isinstance(data, Mapping):
-                raise SrmResponseError("API catalog is not an object")
-            self._catalog = {name: meta for name, meta in data.items() if isinstance(meta, Mapping)}
+        envelope = await self._post(
+            "query.cgi",
+            {"api": INFO_API, "version": "1", "method": "query", "query": "ALL"},
+        )
+        if not envelope["success"]:
+            raise SrmApiError(self._error_code(envelope), INFO_API)
+        data = envelope.get("data")
+        if not isinstance(data, Mapping):
+            raise SrmResponseError("API catalog is not an object")
+        self._catalog = {name: meta for name, meta in data.items() if isinstance(meta, Mapping)}
         return self._catalog
 
     async def supports(self, target: ReadSpec | Callable[[], Awaitable[object]]) -> bool:
@@ -457,22 +494,29 @@ class SrmClient:
         version = await self._pick_version(spec)
         if version is None:
             raise SrmUnsupportedError(104, spec.api)
-        # Parameters first, so they can never replace api, method or version.
-        form = {
-            **dict(spec.params),
-            "api": spec.api,
-            "method": spec.method,
-            "version": str(version),
-        }
         sid = await self._ensure_login()
-        for attempt in range(2):
-            envelope = await self._post("entry.cgi", {**form, "_sid": sid})
+        session_retried = catalog_reloaded = False
+        while True:
+            envelope = await self._post("entry.cgi", {**self._form(spec, version), "_sid": sid})
             if envelope["success"]:
                 return envelope.get("data")
             code = self._error_code(envelope)
-            if code in _SESSION_ERRORS and attempt == 0:
+            if code in _SESSION_ERRORS and not session_retried:
                 _LOGGER.debug("Session ended (%s), logging in again", code)
+                session_retried = True
                 sid = await self._ensure_login(stale_sid=sid)
+                continue
+            if code in _UNSUPPORTED_ERRORS and not catalog_reloaded:
+                # The catalog offered this version but the router refuses it: the firmware
+                # probably changed since the catalog was read. Read it again, once.
+                _LOGGER.debug(
+                    "%s refused version %s (%s), reloading the catalog", spec.api, version, code
+                )
+                catalog_reloaded = True
+                self.clear_catalog()
+                version = await self._pick_version(spec)
+                if version is None:
+                    raise SrmUnsupportedError(code, spec.api)
                 continue
             if code in _UNSUPPORTED_ERRORS:
                 raise SrmUnsupportedError(code, spec.api)
@@ -481,7 +525,16 @@ class SrmClient:
             if code in _SESSION_ERRORS:
                 raise SrmSessionError(code, spec.api)
             raise SrmApiError(code, spec.api)
-        raise SrmSessionError(106, spec.api)  # pragma: no cover - loop always returns
+
+    @staticmethod
+    def _form(spec: ReadSpec, version: int) -> dict[str, str]:
+        # Parameters first, so they can never replace api, method or version.
+        return {
+            **dict(spec.params),
+            "api": spec.api,
+            "method": spec.method,
+            "version": str(version),
+        }
 
     async def get_system_info(self) -> SystemInfo:
         """Model, firmware, CPU, RAM, uptime, clock (``SYNO.Core.System`` ``info``)."""
