@@ -25,16 +25,22 @@ async def get_certificate_fingerprint(
     port: int = DEFAULT_HTTPS_PORT,
     *,
     timeout: float = DEFAULT_TIMEOUT,  # noqa: ASYNC109 - same option as SrmClient
+    ssl_context: ssl.SSLContext | None = None,
 ) -> str:
     """Return the SHA-256 fingerprint of the certificate ``host`` presents, as lowercase hex.
 
     The certificate is not verified, that is the point: this is the trust-on-first-use step. Only
     the TLS handshake is made; nothing is sent to the Web API. The value matches what
     ``aiohttp.Fingerprint`` checks, the hash of the server's own (leaf) certificate.
+
+    ``ssl_context`` replaces the non-verifying context created here, for example Home Assistant's
+    cached ``get_default_no_verify_context()``.
     """
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    context.check_hostname = False
-    context.verify_mode = ssl.CERT_NONE
+    if ssl_context is None:
+        ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+    context = ssl_context
     host = host.removeprefix("[").removesuffix("]")  # accept an IPv6 address in URL form
     try:
         async with asyncio.timeout(timeout):

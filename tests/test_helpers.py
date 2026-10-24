@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+from typing import Any
 
 import pytest
 
-from aiosynologysrm import UtilizationCpu, helpers
+from aiosynologysrm import NetworkDevices, UtilizationCpu, WifiDevices, helpers
+
+from .conftest import MR2200AC, RT2600AC, load
 
 
 @pytest.mark.parametrize(
@@ -68,3 +71,75 @@ def test_cpu_total() -> None:
 )
 def test_normalize_mac(value: object, expected: str | None) -> None:
     assert helpers.normalize_mac(value) == expected
+
+
+def _views() -> list[helpers.DeviceView]:
+    def view(name: str, folder: Any) -> helpers.DeviceView:
+        return helpers.DeviceView(
+            name,
+            NetworkDevices.from_api(load(folder / "network_devices.json")),
+            WifiDevices.from_api(load(folder / "wifi_devices.json")),
+        )
+
+    return [view("router", RT2600AC), view("ap", MR2200AC)]
+
+
+def test_clients_on_a_standalone_access_point_are_found_there() -> None:
+    router, ap = _views()
+    located = helpers.locate_clients([router, ap])
+    assert ap.wifi is not None
+    for entry in ap.wifi.device_list:
+        where = located[helpers.normalize_mac(entry.mac_address) or ""]
+        assert (where.device, where.connection, where.confirmed) == ("ap", "wifi", True)
+        assert where.radio_type == entry.radio_type
+    # the router itself lists some of them as wired: its view would be wrong
+    router_view = {d.mac: d.connection for d in router.devices.devices}
+    assert any(router_view.get(e.mac_address) == "ethernet" for e in ap.wifi.device_list)
+    assert router.wifi is not None
+    for entry in router.wifi.device_list:
+        assert located[entry.mac_address or ""].device == "router"
+    offline = [loc for loc in located.values() if not loc.online]
+    assert offline
+    assert all(loc.device is None for loc in offline)
+    wired = [loc for loc in located.values() if loc.connection == "ethernet"]
+    assert wired
+    assert all(loc.device == "router" and not loc.confirmed for loc in wired)
+
+
+def test_strongest_signal_wins_and_odd_macs_are_skipped() -> None:
+    def wifi(*entries: tuple[str, int]) -> WifiDevices:
+        return WifiDevices.from_api(
+            {"device_list": [{"mac_address": m, "signal": s} for m, s in entries]}
+        )
+
+    empty = NetworkDevices.from_api({"devices": [{"mac": "nope", "is_online": True}]})
+    located = helpers.locate_clients(
+        [
+            helpers.DeviceView("a", empty, wifi(("AA:BB:CC:DD:EE:01", 40), ("x", 99))),
+            helpers.DeviceView("b", empty, wifi(("aa:bb:cc:dd:ee:01", 80))),
+            helpers.DeviceView("c", empty, wifi(("aa:bb:cc:dd:ee:01", 10))),
+            helpers.DeviceView("d", empty),
+        ]
+    )
+    assert list(located) == ["aa:bb:cc:dd:ee:01"]
+    assert located["aa:bb:cc:dd:ee:01"].device == "b"
+
+
+def test_mesh_clients_keep_their_node() -> None:
+    devices = NetworkDevices.from_api(
+        {
+            "devices": [
+                {
+                    "mac": "aa:bb:cc:dd:ee:02",
+                    "is_online": True,
+                    "connection": "wifi",
+                    "signalstrength": 60,
+                    "mesh_node_id": 3,
+                    "mesh_node_name": "point",
+                }
+            ]
+        }
+    )
+    where = helpers.locate_clients([helpers.DeviceView("router", devices)])["aa:bb:cc:dd:ee:02"]
+    assert (where.device, where.connection, where.confirmed) == ("router", "wifi", False)
+    assert (where.mesh_node_id, where.mesh_node_name, where.signal) == (3, "point", 60)

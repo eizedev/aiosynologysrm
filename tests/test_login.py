@@ -144,13 +144,15 @@ async def test_errors_and_logs_never_contain_secrets(
         assert secret not in caplog.text
 
 
-async def test_plain_http_is_logged(
+async def test_plain_http_is_logged_once_per_host(
     http: aiohttp.ClientSession, caplog: pytest.LogCaptureFixture
 ) -> None:
-    SrmClient("192.0.2.1", "u", "p", session=http)
+    SrmClient("198.51.100.7", "u", "p", session=http)
     assert "plain HTTP" not in caplog.text
-    SrmClient("192.0.2.1", "u", "p", session=http, use_https=False)
-    assert "plain HTTP" in caplog.text
+    SrmClient("198.51.100.7", "u", "p", session=http, use_https=False)
+    assert caplog.text.count("plain HTTP") == 1
+    SrmClient("198.51.100.7", "u", "p", session=http, use_https=False)
+    assert caplog.text.count("plain HTTP") == 1
 
 
 async def test_connection_errors_keep_their_cause(http: aiohttp.ClientSession) -> None:

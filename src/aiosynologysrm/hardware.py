@@ -129,7 +129,8 @@ class MeshNodeCapability(SrmModel):
 class MeshNode(SrmModel):
     """A router or mesh point. A standalone device lists only itself, as node ``0``.
 
-    ``parent_node_id`` is ``-1`` for the main router. Rates are SRM's numbers, unit not verified.
+    ``parent_node_id`` is ``-1`` for the main router. ``current_rate_*`` are probably bytes per
+    second, like :class:`UtilizationNetwork`, but too noisy to verify against the kernel.
     """
 
     node_id: int | None = srm("node_id", to_int)

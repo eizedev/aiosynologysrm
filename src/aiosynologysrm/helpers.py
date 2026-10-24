@@ -11,17 +11,27 @@ import hashlib
 import ipaddress
 import json
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any, Literal
 
 from ._parse import normalize_mac, to_timedelta
 from .firewall import FirewallHitCount
-from .hardware import MeshNode, StorageVolume, WifiRadioSetting, WifiRadioState
-from .models import UtilizationCpu
+from .hardware import (
+    MeshNode,
+    StorageVolume,
+    WifiDevice,
+    WifiDevices,
+    WifiRadioSetting,
+    WifiRadioState,
+)
+from .models import NetworkDevice, NetworkDevices, UtilizationCpu
 
 __all__ = [
     "AddressScope",
+    "ClientLocation",
+    "DeviceView",
     "address_scope",
     "config_hash",
     "cpu_total_percent",
@@ -29,6 +39,7 @@ __all__ = [
     "hits_by_rule",
     "is_root",
     "lease_remaining",
+    "locate_clients",
     "normalize_mac",
     "pair_radios",
     "split_addresses",
@@ -157,3 +168,102 @@ def config_hash(payloads: Iterable[Mapping[str, Any]], ignore: frozenset[str] = 
     canonical = [{k: v for k, v in sorted(item.items()) if k not in ignore} for item in payloads]
     data = json.dumps(canonical, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(data.encode()).hexdigest()
+
+
+@dataclass(frozen=True, slots=True)
+class DeviceView:
+    """What one SRM device reported, labelled with a name the caller chooses."""
+
+    name: str
+    devices: NetworkDevices
+    """The device's ``get_network_devices()``."""
+    wifi: WifiDevices | None = None
+    """The device's ``get_wifi_devices()``: the clients on its own radios."""
+
+
+@dataclass(frozen=True, slots=True)
+class ClientLocation:
+    """Where a client is, combined from several SRM devices (see :func:`locate_clients`)."""
+
+    mac: str
+    """Normalized, ``aa:bb:cc:dd:ee:ff``."""
+    online: bool
+    """Any device reports it online."""
+    device: str | None
+    """Name of the :class:`DeviceView` it is attached to; ``None`` when offline everywhere."""
+    connection: str | None
+    """``wifi`` or ``ethernet``, as far as it is known."""
+    confirmed: bool
+    """``True`` when the client is in that device's own Wi-Fi list, the only reliable source."""
+    radio_type: str | None = None
+    signal: int | None = None
+    mesh_node_id: int | None = None
+    mesh_node_name: str | None = None
+
+
+def locate_clients(views: Sequence[DeviceView]) -> dict[str, ClientLocation]:
+    """Tell, for every client the devices know, which device it is attached to and how.
+
+    Pass the main router first, then standalone access points. The rules, in order:
+
+    1. A client in a device's own Wi-Fi list (``wifi``) is on that device, on that radio. This is
+       the only reliable source: the router sees the Wi-Fi clients of a standalone access point
+       as wired devices, and its device list can still say ``wifi`` after a client roamed. If
+       several devices list it, the strongest signal wins.
+    2. Otherwise the first device that lists the client online decides: a wired client, or a
+       Wi-Fi client on a mesh point (``mesh_node_id``), with ``confirmed`` ``False``. Wired
+       clients behind an access point's LAN port cannot be told apart from those on the router.
+    3. A client no device reports online has ``online`` ``False`` and no ``device``.
+
+    Measured on a router with one standalone access point; mesh setups are untested.
+    """
+    wifi: dict[str, tuple[str, WifiDevice]] = {}
+    for view in views:
+        for entry in view.wifi.device_list if view.wifi else ():
+            mac = normalize_mac(entry.mac_address)
+            if mac is None:
+                continue
+            known = wifi.get(mac)
+            if known is None or (entry.signal or -1) > (known[1].signal or -1):
+                wifi[mac] = (view.name, entry)
+    seen: dict[str, list[tuple[str, NetworkDevice]]] = {}
+    for view in views:
+        for device in view.devices.devices:
+            mac = normalize_mac(device.mac)
+            if mac is not None:
+                seen.setdefault(mac, []).append((view.name, device))
+    for mac in wifi:
+        seen.setdefault(mac, [])
+    return {mac: _locate(mac, wifi.get(mac), entries) for mac, entries in seen.items()}
+
+
+def _locate(
+    mac: str, wifi: tuple[str, WifiDevice] | None, entries: list[tuple[str, NetworkDevice]]
+) -> ClientLocation:
+    mesh = next((d for _, d in entries if d.mesh_node_id is not None), None)
+    mesh_id, mesh_name = (mesh.mesh_node_id, mesh.mesh_node_name) if mesh else (None, None)
+    if wifi is not None:
+        name, entry = wifi
+        return ClientLocation(
+            mac=mac,
+            online=True,
+            device=name,
+            connection="wifi",
+            confirmed=True,
+            radio_type=entry.radio_type,
+            signal=entry.signal,
+        )
+    online = next(((name, d) for name, d in entries if d.is_online), None)
+    if online is None:
+        return ClientLocation(mac=mac, online=False, device=None, connection=None, confirmed=False)
+    name, device = online
+    return ClientLocation(
+        mac=mac,
+        online=True,
+        device=name,
+        connection=device.connection,
+        confirmed=False,
+        signal=device.signalstrength if device.connection == "wifi" else None,
+        mesh_node_id=mesh_id,
+        mesh_node_name=mesh_name,
+    )

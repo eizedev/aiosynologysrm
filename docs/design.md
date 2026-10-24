@@ -51,17 +51,18 @@ keeps (DSM and SRM share the Web API framework), plus what SRM itself shows.
 
 | Code | Meaning | Raised as | Checked on SRM |
 |---|---|---|---|
-| 102, 103, 104 | API, method or version does not exist | `SrmUnsupportedError` | 103 seen |
+| 102, 103, 104 | API, method or version does not exist | `SrmUnsupportedError`; for a version the catalog offered, the catalog is read again once first (firmware update) | 103 seen |
 | 105 | insufficient user privilege | `SrmPermissionError` | no |
 | 106, 107, 119 | session expired, ended by a duplicate login, invalid session id | logged in again once | two logins with the same session name do not cause 107 |
 | 114 | missing required parameters | `SrmApiError` | seen |
 | 117 | unknown internal error | `SrmApiError` | no |
-| 400 | wrong account or password | `SrmAuthenticationError` | no |
-| 403, 404, 406 | two-factor code needed, wrong, or enforced | `SrmTwoFactorRequiredError` | no |
-| 407 | "max tries": blocked by auto block | `SrmBlockedError` | SRM ships a matching login message (`error_max_tries`); not triggered on purpose |
+| 400, 401, 402 | wrong account or password, disabled account, no permission | `SrmAuthenticationError` (remembered) | no |
+| 403, 404, 406 | two-factor code needed, wrong, or enforced | `SrmTwoFactorRequiredError` (remembered) | no |
+| 407 | "max tries": blocked by auto block | `SrmBlockedError` (remembered; not an authentication error) | SRM ships a matching login message (`error_max_tries`); not triggered on purpose |
 | 4302 | missing or wrong parameters for this API (not in the DSM tables) | `SrmApiError` | seen |
 
-Any other code is an `SrmApiError` with the number in `code`.
+Any other code is an `SrmApiError` with the number in `code`. At login, such codes are not
+remembered: they can come from a router that is just restarting.
 
 ## Certificates
 
@@ -69,9 +70,10 @@ Any other code is an `SrmApiError` with the number in `code`.
 router's own certificate, the same value `get_certificate_fingerprint()` returns. That function
 completes a TLS handshake without verification and sends nothing else; trusting the value is up
 to the caller, ideally after the user compared it with the certificate shown in SRM.
-TLS failures (untrusted certificate, fingerprint mismatch) raise `SrmCertificateError`, a
-subclass of `SrmConnectionError`, so an application can ask for confirmation of a renewed
-certificate instead of reporting the router as unreachable.
+TLS failures (untrusted certificate, fingerprint mismatch) raise `SrmCertificateError`. It is
+deliberately not a `SrmConnectionError`: retrying does not help, and code that retries connection
+errors must not retry a changed certificate. An application asks the user to confirm the new
+fingerprint instead.
 
 ## Versions
 

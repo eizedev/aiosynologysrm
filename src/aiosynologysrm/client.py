@@ -109,10 +109,12 @@ INFO_API: Final = "SYNO.API.Info"
 _SESSION_ERRORS: Final = frozenset({106, 107, 119})  # expired, duplicate login, invalid session id
 _UNSUPPORTED_ERRORS: Final = frozenset({102, 103, 104})  # no such API, method or version
 _PERMISSION_ERRORS: Final = frozenset({105})  # insufficient privilege; 117 is an internal error
+_CREDENTIAL_ERRORS: Final = frozenset({400, 401, 402})  # wrong credentials, disabled, no permission
 _TWO_FACTOR_ERRORS: Final = frozenset({403, 404, 406})  # code needed, code wrong, 2FA enforced
 _BLOCKED_ERROR: Final = 407  # IP address blocked by auto block
 
 _ALLOWED: Final = frozenset((spec.api, spec.method) for spec in ALL_READS)
+_WARNED_HTTP: set[str] = set()  # hosts warned about plain HTTP, once per process
 
 # The read each getter sends; supports() and the diagnostics use it.
 _GETTER_READS: Final[Mapping[str, tuple[ReadSpec, ...]]] = {
@@ -217,8 +219,9 @@ class SrmClient:
         self._auth_version: int | None = None
         # The failed login's class, code and API; a fresh exception is raised from it each time,
         # so no traceback (with the password in a frame) is kept or grows.
-        self._login_failure: tuple[type[SrmAuthenticationError], int, str | None] | None = None
-        if not use_https:
+        self._login_failure: tuple[type[SrmApiError], int, str | None] | None = None
+        if not use_https and host not in _WARNED_HTTP:
+            _WARNED_HTTP.add(host)
             _LOGGER.warning("Connecting to %s over plain HTTP: the password is not encrypted", host)
 
     async def __aenter__(self) -> Self:
@@ -306,7 +309,7 @@ class SrmClient:
     async def _login_or_remember(self) -> None:
         try:
             await self._login()
-        except SrmAuthenticationError as err:
+        except (SrmAuthenticationError, SrmBlockedError) as err:
             self._login_failure = (type(err), err.code, err.api)
             raise
 
@@ -352,7 +355,9 @@ class SrmClient:
                 raise SrmTwoFactorRequiredError(code, AUTH_API)
             if code == _BLOCKED_ERROR:
                 raise SrmBlockedError(code, AUTH_API)
-            raise SrmAuthenticationError(code, AUTH_API)
+            if code in _CREDENTIAL_ERRORS:
+                raise SrmAuthenticationError(code, AUTH_API)
+            raise SrmApiError(code, AUTH_API)  # possibly temporary, so not remembered
         data = envelope.get("data")
         sid = data.get("sid") if isinstance(data, Mapping) else None
         if not isinstance(sid, str) or not sid:
@@ -457,22 +462,29 @@ class SrmClient:
         version = await self._pick_version(spec)
         if version is None:
             raise SrmUnsupportedError(104, spec.api)
-        # Parameters first, so they can never replace api, method or version.
-        form = {
-            **dict(spec.params),
-            "api": spec.api,
-            "method": spec.method,
-            "version": str(version),
-        }
         sid = await self._ensure_login()
-        for attempt in range(2):
-            envelope = await self._post("entry.cgi", {**form, "_sid": sid})
+        session_retried = catalog_reloaded = False
+        while True:
+            envelope = await self._post("entry.cgi", {**self._form(spec, version), "_sid": sid})
             if envelope["success"]:
                 return envelope.get("data")
             code = self._error_code(envelope)
-            if code in _SESSION_ERRORS and attempt == 0:
+            if code in _SESSION_ERRORS and not session_retried:
                 _LOGGER.debug("Session ended (%s), logging in again", code)
+                session_retried = True
                 sid = await self._ensure_login(stale_sid=sid)
+                continue
+            if code in _UNSUPPORTED_ERRORS and not catalog_reloaded:
+                # The catalog offered this version but the router refuses it: the firmware
+                # probably changed since the catalog was read. Read it again, once.
+                _LOGGER.debug(
+                    "%s refused version %s (%s), reloading the catalog", spec.api, version, code
+                )
+                catalog_reloaded = True
+                self.clear_catalog()
+                version = await self._pick_version(spec)
+                if version is None:
+                    raise SrmUnsupportedError(code, spec.api)
                 continue
             if code in _UNSUPPORTED_ERRORS:
                 raise SrmUnsupportedError(code, spec.api)
@@ -481,7 +493,16 @@ class SrmClient:
             if code in _SESSION_ERRORS:
                 raise SrmSessionError(code, spec.api)
             raise SrmApiError(code, spec.api)
-        raise SrmSessionError(106, spec.api)  # pragma: no cover - loop always returns
+
+    @staticmethod
+    def _form(spec: ReadSpec, version: int) -> dict[str, str]:
+        # Parameters first, so they can never replace api, method or version.
+        return {
+            **dict(spec.params),
+            "api": spec.api,
+            "method": spec.method,
+            "version": str(version),
+        }
 
     async def get_system_info(self) -> SystemInfo:
         """Model, firmware, CPU, RAM, uptime, clock (``SYNO.Core.System`` ``info``)."""

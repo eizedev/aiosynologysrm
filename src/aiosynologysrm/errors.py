@@ -18,11 +18,12 @@ class SrmTimeoutError(SrmConnectionError):
     """The router did not answer within the configured timeout."""
 
 
-class SrmCertificateError(SrmConnectionError):
+class SrmCertificateError(SrmError):
     """The router's TLS certificate failed verification or does not match the pinned fingerprint.
 
-    After a certificate renewal, fetch the new fingerprint with
-    :func:`aiosynologysrm.get_certificate_fingerprint` and confirm it before trusting it.
+    Not a connection error on purpose: retrying does not help. After a certificate renewal, fetch
+    the new fingerprint with :func:`aiosynologysrm.get_certificate_fingerprint` and let the user
+    confirm it before trusting it (in Home Assistant: a reauth or repair flow).
     """
 
 
@@ -42,7 +43,11 @@ class SrmApiError(SrmError):
 
 
 class SrmAuthenticationError(SrmApiError):
-    """Login failed: wrong credentials, disabled account or no permission."""
+    """Login failed: wrong account or password (400), disabled account (401), no permission (402).
+
+    Other login codes are plain :class:`SrmApiError`s and not remembered: they can be temporary,
+    for example while the router restarts.
+    """
 
 
 class SrmTwoFactorRequiredError(SrmAuthenticationError):
@@ -53,10 +58,12 @@ class SrmTwoFactorRequiredError(SrmAuthenticationError):
     """
 
 
-class SrmBlockedError(SrmAuthenticationError):
+class SrmBlockedError(SrmApiError):
     """The router blocks logins from this IP address (code 407), usually after failed attempts.
 
-    Retrying does not help until the block expires or is lifted in SRM's auto block settings.
+    Not an authentication error: the credentials may be right (in Home Assistant a repair issue,
+    not a reauth). Retrying does not help until the block expires or is lifted in SRM's auto block
+    settings, so the client remembers it like a failed login; call ``login()`` once it has expired.
     """
 
 

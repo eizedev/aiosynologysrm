@@ -124,6 +124,8 @@ def test_to_int_rejects_non_integers(value: object) -> None:
 def test_to_int_accepts_integers() -> None:
     assert to_int(" -12 ") == -12
     assert to_int(7) == 7
+    assert to_int(12.0) == 12
+    assert to_int(12.5) is None
 
 
 def test_durations_out_of_range_become_none() -> None:

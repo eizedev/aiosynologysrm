@@ -18,11 +18,13 @@ _MAC = re.compile(r"^[0-9a-f]{2}([:-]?)[0-9a-f]{2}(?:\1[0-9a-f]{2}){4}$")  # one
 
 
 def to_int(value: Any) -> int | None:
-    """Return an integer, also from a digit string; booleans are not integers."""
+    """Return an integer, also from a digit string or a whole float; booleans are not integers."""
     if isinstance(value, bool):
         return None
     if isinstance(value, int):
         return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
     if isinstance(value, str) and _INT.fullmatch(value.strip()):
         return int(value)
     return None

@@ -205,16 +205,24 @@ into a fixture with `scripts/anonymize.py` (see CONTRIBUTING.md) and attach that
 
 ## Errors
 
-Every error derives from `SrmError`. The ones you will meet most:
+Every error from talking to the router derives from `SrmError`; wrong arguments raise
+`ValueError` (an invalid host) or `TypeError` (`supports()` with something that is not a getter).
 
-| Error | Meaning |
-| --- | --- |
-| `SrmAuthenticationError` | wrong user or password, or the account is disabled |
-| `SrmTwoFactorRequiredError` | the account uses two-factor authentication; pass a fresh `otp_code` |
-| `SrmBlockedError` | the router blocks logins from this IP address after failed attempts |
-| `SrmCertificateError` | the certificate is not trusted or does not match the pinned fingerprint |
-| `SrmUnsupportedError` | this router or firmware does not offer the requested data |
-| `SrmConnectionError` / `SrmTimeoutError` | the router could not be reached |
+| Error | Meaning | In Home Assistant |
+| --- | --- | --- |
+| `SrmAuthenticationError` | wrong user or password (400), disabled account (401), no permission (402) | `ConfigEntryAuthFailed` (reauth) |
+| `SrmTwoFactorRequiredError` | the account uses two-factor authentication; pass a fresh `otp_code` | `ConfigEntryAuthFailed`; use an account without 2FA |
+| `SrmBlockedError` | the router blocks logins from this address after failed attempts; credentials may be fine | repair issue, then `login()` once the block expired |
+| `SrmCertificateError` | the certificate is not trusted or does not match the pinned fingerprint | reauth or repair: confirm the new fingerprint |
+| `SrmConnectionError` / `SrmTimeoutError` | the router could not be reached | `ConfigEntryNotReady` / `UpdateFailed` |
+| `SrmSessionError` | the router ended the session right after a new login | `UpdateFailed` |
+| `SrmUnsupportedError` | this router or firmware does not offer the requested data | skip the entity (`supports()`) |
+| `SrmApiError` | any other code, including unknown login codes during a restart | `UpdateFailed` |
+
+After a failed login (authentication, 2FA, blocked) the client sends no further logins until
+`login()` is called, so polling cannot run into SRM's auto block. Each request has its own
+`timeout`; one read can chain catalog, login and a retry, so wrap a whole update in
+`asyncio.timeout()` if it must finish in a fixed time.
 
 Error messages never contain passwords or session data, so they are safe to log.
 

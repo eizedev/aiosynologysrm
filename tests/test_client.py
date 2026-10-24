@@ -105,10 +105,45 @@ async def test_wrong_two_factor_code_is_not_repeated(
 
 async def test_blocked_ip_address(fake: FakeSrm, make_client: MakeClient) -> None:
     fake.login_error = 407
+    client = make_client()
     with pytest.raises(SrmBlockedError) as err:
-        await make_client().login()
-    assert isinstance(err.value, SrmAuthenticationError)
+        await client.login()
+    assert not isinstance(err.value, SrmAuthenticationError)  # no reauth: credentials may be fine
     assert err.value.code == 407
+    with pytest.raises(SrmBlockedError):
+        await client.get_system_info()  # remembered, not sent again
+    assert sum(1 for r in fake.requests if r.get("method") == "login") == 1
+
+
+async def test_unknown_login_codes_are_not_remembered(
+    fake: FakeSrm, make_client: MakeClient
+) -> None:
+    fake.login_error = 117
+    client = make_client()
+    with pytest.raises(SrmApiError) as err:
+        await client.get_system_info()
+    assert type(err.value) is SrmApiError
+    fake.login_error = None  # the router is back
+    assert (await client.get_system_info()).model == "RT2600ac"
+
+
+async def test_stale_catalog_is_reloaded_once(fake: FakeSrm, make_client: MakeClient) -> None:
+    client = make_client()
+    await client.get_system_info()  # catalog cached: SYNO.Core.System up to v2
+    fake.errors_by_version[("SYNO.Core.System", "2")] = 104  # a firmware update dropped v2
+    fake.catalog["SYNO.Core.System"]["maxVersion"] = 1
+    assert (await client.get_system_info()).model == "RT2600ac"
+    sent = [r["version"] for r in fake.requests if r.get("api") == "SYNO.Core.System"]
+    assert sent[-2:] == ["2", "1"]
+    assert sum(1 for r in fake.requests if r.get("api") == "SYNO.API.Info") == 2
+    fake.catalog["SYNO.Core.System"] = {"minVersion": 1, "maxVersion": 2}
+    fake.errors_by_version[("SYNO.Core.System", "1")] = 104
+    client.clear_catalog()
+    with pytest.raises(SrmUnsupportedError):
+        await client.get_system_info()  # still refused after one reload: unsupported
+    del fake.catalog["SYNO.Core.System"]  # the new firmware dropped the API altogether
+    with pytest.raises(SrmUnsupportedError):
+        await client.get_system_info()
 
 
 async def test_expired_session_logs_in_again_once(fake: FakeSrm, make_client: MakeClient) -> None:

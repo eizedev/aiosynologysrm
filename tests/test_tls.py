@@ -166,3 +166,14 @@ async def test_fingerprint_without_certificate(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr(asyncio, "open_connection", open_connection)
     with pytest.raises(SrmConnectionError, match="no certificate"):
         await get_certificate_fingerprint(HOST)
+
+
+async def test_fingerprint_with_a_given_context(
+    https_server: TestServer, leaf_fingerprint: str
+) -> None:
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    assert https_server.port is not None
+    fingerprint = await get_certificate_fingerprint(HOST, https_server.port, ssl_context=context)
+    assert fingerprint == leaf_fingerprint

@@ -111,8 +111,9 @@ async def collect_diagnostics(client: SrmClient, *, counts: bool = True) -> dict
     """
     report: dict[str, Any] = {"library": __version__}
     try:
-        if not client.logged_in:
-            await client.login()
+        # Reuses a session and respects a remembered failed login, so a diagnostics download
+        # never adds a login attempt towards SRM's auto block.
+        await client._ensure_login()
         catalog = await client.get_catalog()
     except SrmError as err:
         report["error"] = _error(err)
@@ -124,20 +125,23 @@ async def collect_diagnostics(client: SrmClient, *, counts: bool = True) -> dict
         for spec in specs
         for meta in (catalog.get(spec.api, {}),)
     }
-    getters: dict[str, Any] = {}
-    for name in _GETTER_READS:
-        getter = getattr(client, name)
-        if not await client.supports(getter):
-            getters[name] = {"result": "unsupported"}
-            continue
-        try:
-            result = await getter()
-        except _RECOVERABLE as err:
-            getters[name] = {"result": _error(err)}
-            continue
-        getters[name] = {"result": "ok", **_shape(result, counts=counts)}
-    report["getters"] = getters
+    entries = await asyncio.gather(
+        *(_getter(client, name, counts=counts) for name in _GETTER_READS)
+    )
+    report["getters"] = dict(zip(_GETTER_READS, entries, strict=True))
     return report
+
+
+async def _getter(client: SrmClient, name: str, *, counts: bool) -> dict[str, Any]:
+    """Run one getter (the client limits how many run at once) and describe its result."""
+    getter = getattr(client, name)
+    if not await client.supports(getter):
+        return {"result": "unsupported"}
+    try:
+        result = await getter()
+    except _RECOVERABLE as err:
+        return {"result": _error(err)}
+    return {"result": "ok", **_shape(result, counts=counts)}
 
 
 def _parser() -> argparse.ArgumentParser:

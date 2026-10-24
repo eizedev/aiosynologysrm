@@ -6,6 +6,32 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-24
+
+### Added
+
+- `helpers.locate_clients()` with `DeviceView` and `ClientLocation`: combines the client lists of a
+  router and its access points into one answer per client (device, Wi-Fi or wired, radio,
+  signal, mesh node), trusting each device's own Wi-Fi list over the router's view.
+- `get_certificate_fingerprint(..., ssl_context=...)` to reuse an existing non-verifying context.
+- README: which error maps to which Home Assistant reaction.
+
+### Changed
+
+- **Breaking:** `SrmCertificateError` is no longer a `SrmConnectionError`, and `SrmBlockedError`
+  no longer a `SrmAuthenticationError`: retrying a changed certificate does not help, and a
+  blocked address does not mean wrong credentials.
+- Only login codes 400-402 raise `SrmAuthenticationError`; other login codes are plain
+  `SrmApiError`s and not remembered, because they can come from a restarting router.
+- When the router refuses a version its catalog offered (102-104), the client reads the catalog
+  again once, so a firmware update does not leave it stuck.
+- Diagnostics respect a remembered failed login instead of trying again, and run the getters
+  concurrently (still limited by `max_concurrency`).
+- Whole floats (`12.0`) are accepted as integers.
+- The plain-HTTP warning is logged once per host.
+- Units measured: `Utilization` network rates are bytes per second, `load_*` the load averages
+  times 100.
+
 ## [0.5.0] - 2026-10-24
 
 ### Changed
@@ -196,7 +222,8 @@ These names are gone; use the replacement on the right.
 - `scripts/anonymize.py` to turn real router answers into publishable test fixtures.
 - Fixtures from an RT2600ac with SRM 1.3.2.
 
-[Unreleased]: https://github.com/eizedev/aiosynologysrm/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/eizedev/aiosynologysrm/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/eizedev/aiosynologysrm/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/eizedev/aiosynologysrm/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/eizedev/aiosynologysrm/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/eizedev/aiosynologysrm/compare/v0.2.0...v0.3.0
