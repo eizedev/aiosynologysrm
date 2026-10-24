@@ -79,4 +79,5 @@ The build requirements are pinned with hashes in `build-constraints.txt`; refres
 printf 'hatchling>=1.27\nhatch-vcs>=0.4\n' | uv pip compile - --generate-hashes --python-version 3.12 --no-header -o build-constraints.txt
 ```
 
-and put the two comment lines at the top back.
+and put the two comment lines at the top back. Do this before each release; Dependabot does not
+update this file.

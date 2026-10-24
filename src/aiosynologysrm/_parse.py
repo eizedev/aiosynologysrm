@@ -1,7 +1,7 @@
 """Tolerant converters and the model base: odd input becomes ``None``, never an exception.
 
 Every model field names the SRM key it reads with :func:`srm`. :class:`SrmModel` builds the model
-from that declaration, so a field is named after its key by construction.
+from that declaration; a test checks that every field's name is ``snake(key)``.
 """
 
 from __future__ import annotations
@@ -145,7 +145,12 @@ class SrmModel:
 
 def one(model: type[SrmModel]) -> Callable[[Any], Any]:
     """Return a converter for a nested object."""
-    return lambda value: model.from_api(value) if isinstance(value, Mapping) else None
+
+    def convert(value: Any) -> SrmModel | None:
+        return model.from_api(value) if isinstance(value, Mapping) else None
+
+    convert.model = model  # type: ignore[attr-defined]
+    return convert
 
 
 def many(model: type[SrmModel]) -> Callable[[Any], Any]:
@@ -155,4 +160,5 @@ def many(model: type[SrmModel]) -> Callable[[Any], Any]:
         return model.list_from_api(value)
 
     convert.is_list = True  # type: ignore[attr-defined]
+    convert.model = model  # type: ignore[attr-defined]
     return convert

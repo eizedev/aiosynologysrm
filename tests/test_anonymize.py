@@ -176,8 +176,8 @@ def test_main_refuses_and_writes(tmp_path: Path, capsys: pytest.CaptureFixture[s
 @pytest.mark.parametrize(
     ("data", "problem"),
     [
-        ({"aa:bb:cc:11:22:33": {"band": "5G"}}, "look like addresses"),
-        ({"Annas Laptop": 1}, "look like addresses"),
+        ({"aa:bb:cc:11:22:33": {"band": "5G"}}, "no known field or container"),
+        ({"Annas Laptop": 1}, "no known field or container"),
         ({"status": "connected to 10.1.2.3"}, "new values under kept or address keys (status)"),
         ({"profile": "Annas Kinderprofil"}, "new values under kept or address keys (profile)"),
         ({"model": "Annas Laptop"}, "new values under kept or address keys (model)"),
@@ -231,3 +231,15 @@ def test_clock_and_rare_device_types_are_neutral() -> None:
     assert [d["dev_type"] for d in out["devices"]] == ["other", "tv"]
     assert a.walk({"time": 1792833653}) == {"time": 1767225600}
     a.check()
+
+
+def test_names_as_keys_and_keyless_values_are_refused() -> None:
+    a = anonymize.Anonymizer()
+    a.walk({"AlicesLaptop": {"mac": "a4:83:e7:12:34:56"}})
+    with pytest.raises(anonymize.UnknownKeyError, match="no known field or container") as err:
+        a.check()
+    assert "Alice" not in str(err.value)
+    b = anonymize.Anonymizer()
+    b.walk(["Alice-Laptop", 1234])
+    with pytest.raises(anonymize.UnknownKeyError, match="2 values without a key"):
+        b.check()

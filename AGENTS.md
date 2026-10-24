@@ -28,7 +28,8 @@ uv run mypy                   # strict
 - **Every new API needs a fixture** recorded on a real router and anonymized with
   `scripts/anonymize.py` (all files of one recording in one run). Never commit raw router output;
   `*.raw.json` is ignored for that reason. The script is an allowlist: a new text field stops it
-  until the field is added to `KEEP_KEYS`, `ADDRESS_KEYS` or `NAME_KEYS`. Keep only fixed
+  until the field is added to `KEEP_VALUES`, `KEEP_PATTERNS`, `ADDRESS_KEYS`, `NAME_KEYS`,
+  `NUMBER_KEYS` or `CONTAINER_KEYS`. Keep only fixed
   vocabulary; when in doubt, it is a name. Check the output by eye as well.
 - **Models mirror SRM** (docs/design.md, "Data model"): frozen dataclasses deriving from
   `SrmModel`, one per SRM object, every field declared as `name: T = srm("srmKey", converter)`

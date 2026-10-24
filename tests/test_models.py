@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import inspect
+import typing
 from collections.abc import Callable, Iterator
 from typing import Any
 
@@ -53,6 +54,23 @@ def test_fields_are_named_after_srm_keys(model: type) -> None:
             continue
         assert "srm" in f.metadata, f"{model.__name__}.{f.name} does not name its SRM key"
         assert f.name == snake(f.metadata["srm"]), f"{model.__name__}.{f.name}"
+
+
+@pytest.mark.parametrize("model", MODELS, ids=lambda c: c.__name__)
+def test_field_types_match_their_converters(model: type) -> None:
+    hints = typing.get_type_hints(model)
+    for f in dataclasses.fields(model):
+        if f.name == "raw":
+            continue
+        convert = f.metadata["convert"]
+        nested = getattr(convert, "model", None)
+        if nested is None:
+            expected = typing.get_type_hints(convert)["return"]
+        elif getattr(convert, "is_list", False):
+            expected = tuple[nested, ...]  # type: ignore[valid-type]
+        else:
+            expected = nested | None
+        assert hints[f.name] == expected, f"{model.__name__}.{f.name}"
 
 
 def test_snake_case_rule() -> None:

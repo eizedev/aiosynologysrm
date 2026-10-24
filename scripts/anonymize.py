@@ -37,8 +37,50 @@ TOKEN = re.compile(
     f"|(?P<ipv6>{IPV6.pattern})|(?P<host>{HOST.pattern})"
 )
 KEY = re.compile(r"[A-Za-z0-9_.]+")  # what an SRM field name looks like
+# Keys whose value is an object or a list. Any other key holding one stops the script: a key that
+# is not known could be a name ({"AlicesLaptop": {...}}).
+CONTAINER_KEYS = frozenset(
+    {
+        "capability",
+        "clientlist",
+        "configs",
+        "cpu",
+        "data",
+        "default_policy",
+        "device_list",
+        "devices",
+        "disk",
+        "eth_port_info",
+        "in_interface_value",
+        "ipv4",
+        "ipv6",
+        "lun",
+        "memory",
+        "network",
+        "nodes",
+        "out_interface_value",
+        "prefix",
+        "radio_list",
+        "reservationlist",
+        "rules",
+        "sd_dev",
+        "space",
+        "status_list",
+        "total",
+        "usb_dev",
+        "volume",
+        "volumes",
+    }
+)
 IPV4_POOLS = ("192.0.2", "198.51.100", "203.0.113")  # documentation ranges, RFC 5737
 MAC_DIGITS = 12
+
+# The tests need only a few common device types; every other one becomes "other", because the
+# list of rare ones (water heater, air conditioner) describes one household.
+COMMON_DEV_TYPES = frozenset(
+    {"cellphone", "default", "game", "ipad", "nas", "nb", "other", "printer", "router", "switch"}
+    | {"tv", "watch"}
+)
 
 # Fixed vocabulary or technical values, kept as they are, but only the values listed here: a new
 # value under one of these keys stops the script until it is added (or the key reclassified).
@@ -57,28 +99,7 @@ KEEP_VALUES: dict[str, frozenset[str]] = {
     "cpu_vendor": frozenset({"QUALCOMM"}),
     "created_by": frozenset({"forwardRule", "user"}),
     "custom_topology_mode": frozenset({"auto_detection"}),
-    "dev_type": frozenset(
-        {
-            "air_conditioner",
-            "av_system",
-            "cellphone",
-            "default",
-            "dlna",
-            "game",
-            "ipad",
-            "nas",
-            "nb",
-            "other",
-            "printer",
-            "robotcleaner",
-            "router",
-            "switch",
-            "temperature_sensor",
-            "tv",
-            "watch",
-            "water_heater",
-        }
-    ),
+    "dev_type": COMMON_DEV_TYPES,  # every other type becomes "other", see _string()
     "device": frozenset(
         {
             "Memory",
@@ -267,14 +288,9 @@ PORT_KEYS = frozenset(
 PORT_NUMBER = re.compile(r"\b\d{1,5}\b")
 FIRST_PORT = 10001
 NEUTRAL_TIME_ZONE = "UTC"
-# A recording's clock and the device types of a household also describe one real network. The
-# tests need only a few common device types; the rest become "other".
+# A recording's clock also describes one real network.
 NEUTRAL_TIME_TEXT = "2026-01-01 00:00:00"
 NEUTRAL_TIME_NUMBER = 1767225600  # 2026-01-01 00:00:00 UTC
-COMMON_DEV_TYPES = frozenset(
-    {"cellphone", "default", "game", "ipad", "nas", "nb", "other", "printer", "router", "switch"}
-    | {"tv", "watch"}
-)
 # What may be left of an address field once its addresses are replaced: separators, prefix
 # lengths, ranges. Anything else (a host name without a dot, a word) stops the script.
 ADDRESS_REST = re.compile(r"[\s,;/\-0-9]*")
@@ -303,6 +319,7 @@ class Anonymizer:
         self.unknown_values: set[str] = set()
         self.unknown_numbers: set[str] = set()
         self.odd_keys = 0
+        self.keyless = 0
         self.originals: set[str] = set()
         self.original_names: set[str] = set()
 
@@ -446,9 +463,7 @@ class Anonymizer:
         if lower == "time" and KEEP_PATTERNS["time"].fullmatch(value):
             return NEUTRAL_TIME_TEXT
         if lower == "dev_type" and value not in COMMON_DEV_TYPES:
-            return (
-                "other" if value in KEEP_VALUES["dev_type"] else self._unknown_value(lower, value)
-            )
+            return "other"
         if lower in KEEP_PATTERNS:
             if not KEEP_PATTERNS[lower].fullmatch(value):
                 self.unknown_values.add(lower)
@@ -466,22 +481,25 @@ class Anonymizer:
         self._note(self.unknown, key)
         return value
 
-    def _unknown_value(self, key: str, value: str) -> str:
-        self.unknown_values.add(key)
-        return value
-
-    @staticmethod
-    def _note(found: set[str], key: str) -> None:
+    def _note(self, found: set[str], key: str) -> None:
         """Remember a key for the error message, unless the key itself could be personal."""
-        if KEY.fullmatch(key) and not TOKEN.search(key):
+        if not key:
+            self.keyless += 1  # a text or number at the top level or in a list of values
+        elif KEY.fullmatch(key) and not TOKEN.search(key):
             found.add(key)
+        else:
+            self.odd_keys += 1
 
     def walk(self, value: Any, key: str = "") -> Any:
         """Return an anonymized copy of a JSON value; unclassified text keys are collected."""
         if isinstance(value, dict):
             result = {}
             for k, v in value.items():
-                if not KEY.fullmatch(k) or TOKEN.search(k):
+                if (
+                    not KEY.fullmatch(k)
+                    or TOKEN.search(k)
+                    or (isinstance(v, (dict, list)) and k.lower() not in CONTAINER_KEYS)
+                ):
                     self.odd_keys += 1  # an address or a name used as a key
                 side = k.removesuffix("_ip_value")
                 if side != k and value.get(f"{side}_ip_type") == "geo" and isinstance(v, str):
@@ -507,7 +525,8 @@ class Anonymizer:
     def check(self) -> None:
         """Raise if anything was left alone because the script does not know it.
 
-        Messages name keys only, never values, so the output is safe to paste.
+        Messages never contain values. They name keys only where a key looks like a field name;
+        other keys (which could be names) are counted.
         """
         problems = []
         if self.unknown:
@@ -526,7 +545,12 @@ class Anonymizer:
             names = ", ".join(sorted(self.unknown_numbers))
             problems.append(f"numbers under unclassified keys ({names}): add each to NUMBER_KEYS")
         if self.odd_keys:
-            problems.append(f"{self.odd_keys} keys that look like addresses or names")
+            problems.append(
+                f"{self.odd_keys} keys that are no known field or container (could be names); "
+                "find them in the raw file and add field names to the lists"
+            )
+        if self.keyless:
+            problems.append(f"{self.keyless} values without a key (top level or bare lists)")
         if problems:
             raise UnknownKeyError("; ".join(problems))
 

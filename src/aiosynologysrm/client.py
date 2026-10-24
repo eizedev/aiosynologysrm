@@ -144,6 +144,13 @@ _GETTER_READS: Final[Mapping[str, tuple[ReadSpec, ...]]] = {
 }
 
 
+def _valid_host(host: str) -> bool:
+    """Tell whether ``host`` is a host name or IP address (not ``host:port``, a path or a user)."""
+    if _is_ipv6(host) or _is_ipv6(host.removeprefix("[").removesuffix("]")):
+        return True
+    return bool(host) and not any(c in host for c in ":/#?@ \t\n")
+
+
 def _is_ipv6(host: str) -> bool:
     """Whether a host is a bare IPv6 address that needs brackets in a URL."""
     try:
@@ -187,8 +194,12 @@ class SrmClient:
         session_name: str = "aiosynologysrm",
     ) -> None:
         """Prepare the client; nothing is sent until the first request."""
+        if not _valid_host(host):
+            msg = "host must be a host name or an IP address, without port, path or user"
+            raise ValueError(msg)
         if port is None:
             port = DEFAULT_HTTPS_PORT if use_https else DEFAULT_HTTP_PORT
+        host = host.removeprefix("[").removesuffix("]")
         bracketed = f"[{host}]" if _is_ipv6(host) else host
         self._base_url = f"{'https' if use_https else 'http'}://{bracketed}:{port}/webapi"
         self._username = username
@@ -204,7 +215,9 @@ class SrmClient:
         self._catalog: dict[str, Mapping[str, Any]] | None = None
         self._catalog_lock = asyncio.Lock()
         self._auth_version: int | None = None
-        self._login_failure: SrmAuthenticationError | None = None
+        # The failed login's class, code and API; a fresh exception is raised from it each time,
+        # so no traceback (with the password in a frame) is kept or grows.
+        self._login_failure: tuple[type[SrmAuthenticationError], int, str | None] | None = None
         if not use_https:
             _LOGGER.warning("Connecting to %s over plain HTTP: the password is not encrypted", host)
 
@@ -294,7 +307,7 @@ class SrmClient:
         try:
             await self._login()
         except SrmAuthenticationError as err:
-            self._login_failure = err
+            self._login_failure = (type(err), err.code, err.api)
             raise
 
     async def _login_version(self) -> int:
@@ -370,7 +383,8 @@ class SrmClient:
     async def _ensure_login(self, stale_sid: str | None = None) -> str:
         async with self._login_lock:
             if self._login_failure is not None:
-                raise self._login_failure
+                kind, code, api = self._login_failure
+                raise kind(code, api)
             if self._sid is None or self._sid == stale_sid:
                 await self._login_or_remember()
             if self._sid is None:  # pragma: no cover - _login either sets it or raises
@@ -405,7 +419,7 @@ class SrmClient:
         """Whether the router offers a read, or everything a getter needs, without sending it.
 
         Pass a :class:`ReadSpec` or one of this client's getters, for example
-        ``await client.supports(client.get_wifi_radios)``.
+        ``await client.supports(client.get_wifi_radio_status)``.
         """
         if isinstance(target, ReadSpec):
             specs: tuple[ReadSpec, ...] = (target,)
@@ -435,8 +449,9 @@ class SrmClient:
         Raises :class:`SrmUnsupportedError` if the router does not offer the API in a version
         this library understands, and :class:`SrmNotAllowedError` for anything not allowlisted.
         """
-        # Two checks on purpose: `_ALLOWED` is computed at import, so a spec in ALL_READS that was
-        # changed in place afterwards still cannot send another API or method.
+        # Two checks on purpose: `_ALLOWED` is computed at import, so a spec in ALL_READS whose api
+        # or method was changed in place afterwards is still refused. Its params and versions are
+        # not guarded that way; the allowlist is a safeguard, not a security boundary.
         if (spec.api, spec.method) not in _ALLOWED or spec not in ALL_READS:
             raise SrmNotAllowedError(f"{spec.api}.{spec.method} is not an allowed read")
         version = await self._pick_version(spec)

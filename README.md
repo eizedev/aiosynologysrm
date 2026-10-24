@@ -91,6 +91,10 @@ import aiohttp
 
 from aiosynologysrm import SrmClient
 
+# SRM ships a self-signed certificate: pin its fingerprint (see "Certificate" below for how to
+# read it once and confirm it).
+FINGERPRINT = "<the router's SHA-256 fingerprint, hex>"
+
 
 async def main() -> None:
     async with aiohttp.ClientSession() as session:
@@ -99,7 +103,7 @@ async def main() -> None:
             "admin-user",
             "secret",
             session=session,
-            ssl=False,  # SRM ships a self-signed certificate; better: pin it, see below
+            ssl=aiohttp.Fingerprint(bytes.fromhex(FINGERPRINT)),
         ) as client:
             info = await client.get_system_info()
             print(info.model, info.firmware_ver)

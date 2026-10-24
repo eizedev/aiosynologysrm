@@ -279,11 +279,18 @@ def test_ipv6_host_is_bracketed(http: aiohttp.ClientSession) -> None:
     assert client._base_url == "https://[fd00::1]:8001/webapi"
 
 
+@pytest.mark.parametrize("host", ["", "router:8001", "a/b#c", "user@router", "router?x", "a b"])
+def test_invalid_hosts_are_refused(http: aiohttp.ClientSession, host: str) -> None:
+    with pytest.raises(ValueError, match="host name or an IP address"):
+        SrmClient(host, "u", "p", session=http)
+
+
 def test_only_ipv6_addresses_get_brackets(http: aiohttp.ClientSession) -> None:
     def url(host: str) -> str:
         return SrmClient(host, "u", "p", session=http, port=8001)._base_url
 
     assert url("fe80::1") == "https://[fe80::1]:8001/webapi"
+    assert url("[fe80::1]") == "https://[fe80::1]:8001/webapi"
     assert url("192.0.2.1") == "https://192.0.2.1:8001/webapi"
     assert url("router.example") == "https://router.example:8001/webapi"
 

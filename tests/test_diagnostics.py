@@ -13,7 +13,7 @@ import aiohttp
 import pytest
 from aiohttp.test_utils import TestServer
 
-from aiosynologysrm import SrmClient
+from aiosynologysrm import SrmClient, SrmConnectionError
 from aiosynologysrm import diagnostics as diag
 
 from .conftest import PASSWORD, USERNAME, FakeSrm
@@ -69,6 +69,13 @@ async def test_counts_can_be_left_out(make_client: MakeClient) -> None:
     assert all("count" not in g for g in report["getters"].values())
 
 
+async def test_an_existing_session_is_reused(fake: FakeSrm, make_client: MakeClient) -> None:
+    client = make_client()
+    await client.login()
+    await diag.collect_diagnostics(client)
+    assert fake.logins == 1
+
+
 async def test_login_failure_is_reported(make_client: MakeClient) -> None:
     report = await diag.collect_diagnostics(make_client(password="wrong"))
     assert report["error"] == "SrmAuthenticationError 400"
@@ -100,6 +107,8 @@ async def test_command_line(
     monkeypatch.setenv("SRM_PASSWORD", "wrong")
     assert await asyncio.to_thread(diag.main, args) == 1
     assert "SrmAuthenticationError" in capsys.readouterr().err
+    assert await asyncio.to_thread(diag.main, ["router:8001", "--user", "u", "--http"]) == 2
+    assert "host name or an IP address" in capsys.readouterr().err
 
 
 def _args(*extra: str) -> Any:
@@ -137,3 +146,15 @@ def test_certificate_choice(
 def test_bad_fingerprint_is_a_clear_error(value: str) -> None:
     with pytest.raises(SystemExit, match="SHA-256 in hex"):
         diag._trust(_args("--fingerprint", value))
+
+
+def test_unreachable_certificate_is_an_error(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    async def unreachable(*_: Any, **__: Any) -> str:
+        raise SrmConnectionError("Connection failed (OSError)")
+
+    monkeypatch.setattr(diag, "get_certificate_fingerprint", unreachable)
+    monkeypatch.setenv("SRM_PASSWORD", "x")
+    assert diag.main(["192.0.2.1", "--user", "u"]) == 1
+    assert "SrmConnectionError" in capsys.readouterr().err

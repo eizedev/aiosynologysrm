@@ -24,10 +24,13 @@ from typing import Any
 import aiohttp
 
 from . import __version__
-from .client import _GETTER_READS, SrmClient
-from .errors import SrmApiError, SrmError, SrmResponseError
+from .client import _GETTER_READS, DEFAULT_HTTPS_PORT, DEFAULT_TIMEOUT, SrmClient
+from .errors import SrmApiError, SrmConnectionError, SrmError, SrmResponseError
 from .helpers import address_scope
 from .tls import get_certificate_fingerprint
+
+# Errors one call can run into while the others still work; a failed login is not one of them.
+_RECOVERABLE = (SrmApiError, SrmResponseError, SrmConnectionError)
 
 
 def _type_name(value: Any) -> str:
@@ -83,17 +86,17 @@ async def _device(client: SrmClient) -> dict[str, Any]:
     try:
         info = await client.get_system_info()
         device.update(model=info.model, firmware=info.firmware_ver)
-    except (SrmApiError, SrmResponseError) as err:
+    except _RECOVERABLE as err:
         device["system_info"] = _error(err)
     try:
         device["operating_mode"] = (await client.get_topology()).net_topology
-    except (SrmApiError, SrmResponseError) as err:
+    except _RECOVERABLE as err:
         device["topology"] = _error(err)
     try:
         status = await client.get_connection_status()
         # Only the category (public, private, cgnat), never the address.
         device["wan_ipv4_scope"] = address_scope(status.ipv4.ip if status.ipv4 else None)
-    except (SrmApiError, SrmResponseError) as err:
+    except _RECOVERABLE as err:
         device["connection_status"] = _error(err)
     return device
 
@@ -108,7 +111,8 @@ async def collect_diagnostics(client: SrmClient, *, counts: bool = True) -> dict
     """
     report: dict[str, Any] = {"library": __version__}
     try:
-        await client.login()
+        if not client.logged_in:
+            await client.login()
         catalog = await client.get_catalog()
     except SrmError as err:
         report["error"] = _error(err)
@@ -128,7 +132,7 @@ async def collect_diagnostics(client: SrmClient, *, counts: bool = True) -> dict
             continue
         try:
             result = await getter()
-        except (SrmApiError, SrmResponseError) as err:
+        except _RECOVERABLE as err:
             getters[name] = {"result": _error(err)}
             continue
         getters[name] = {"result": "ok", **_shape(result, counts=counts)}
@@ -150,7 +154,9 @@ def _parser() -> argparse.ArgumentParser:
     tls = parser.add_mutually_exclusive_group()
     tls.add_argument("--fingerprint", help="SHA-256 of the router's certificate, hex")
     tls.add_argument("--insecure", action="store_true", help="do not check the certificate")
-    parser.add_argument("--timeout", type=float, default=30.0, help="seconds per request")
+    parser.add_argument(
+        "--timeout", type=float, default=DEFAULT_TIMEOUT, help="seconds per request"
+    )
     parser.add_argument(
         "--no-counts", action="store_true", help="leave out how many items each getter returned"
     )
@@ -164,7 +170,9 @@ def _trust(args: argparse.Namespace) -> bool | aiohttp.Fingerprint:
     fingerprint = args.fingerprint
     if fingerprint is None:
         fingerprint = asyncio.run(
-            get_certificate_fingerprint(args.host, args.port or 8001, timeout=args.timeout)
+            get_certificate_fingerprint(
+                args.host, args.port or DEFAULT_HTTPS_PORT, timeout=args.timeout
+            )
         )
         print(f"Certificate fingerprint (SHA-256): {fingerprint}", file=sys.stderr)
         print("Compare it with SRM: Control Panel > Security > Certificate.", file=sys.stderr)
@@ -191,9 +199,8 @@ def _fingerprint_bytes(text: str) -> bytes:
 async def _run(
     args: argparse.Namespace, password: str, ssl: bool | aiohttp.Fingerprint
 ) -> dict[str, Any]:
-    async with (
-        aiohttp.ClientSession() as session,
-        SrmClient(
+    async with aiohttp.ClientSession() as session:
+        client = SrmClient(
             args.host,
             args.user,
             password,
@@ -203,9 +210,11 @@ async def _run(
             ssl=ssl,
             timeout=args.timeout,
             session_name="aiosynologysrm-diagnostics",
-        ) as client,
-    ):
-        return await collect_diagnostics(client, counts=not args.no_counts)
+        )
+        try:
+            return await collect_diagnostics(client, counts=not args.no_counts)
+        finally:
+            await client.logout()
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -216,6 +225,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         report = asyncio.run(_run(args, password, _trust(args)))
     except SrmError as err:
         print(f"error: {_error(err)}: {err}", file=sys.stderr)
+        return 1
+    except ValueError as err:  # an invalid host
+        print(f"error: {err}", file=sys.stderr)
+        return 2
+    if "error" in report:  # login failed or the router is unreachable
+        print(f"error: {report['error']}", file=sys.stderr)
         return 1
     json.dump(report, sys.stdout, indent=2, sort_keys=True)
     print()

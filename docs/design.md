@@ -123,6 +123,10 @@ represents data, it does not interpret it". In practice:
 - **Values keep SRM's units and formats** and are only converted to Python types: `"4"` becomes
   `4`, `0`/`1` become booleans, but `"143:35:20"`, `"0,22,37"` and comma-separated address lists
   stay text. Nothing is filtered out: an entry with an odd MAC address is still returned.
+- **Wrapper models carry SRM's own names**, even where they are not pretty: a getter returns the
+  whole answer, so its list sits under SRM's key (`Ipv6Prefixes.prefix`, `DhcpServers.data`,
+  `WifiRadioStatus.status_list`). A nested object SRM did not send is `None`; a missing list is
+  `()`. Check for `None` at each level (`clients.client_list.ipv4`).
 - **Keys the library does not map yet** are in each model's read-only `raw`.
 - **Everything derived lives in `aiosynologysrm.helpers`**: joins (`pair_radios`, `hits_by_rule`),
   classifications (`address_scope`, `is_root`), parsed durations and dates, sums and percentages,
