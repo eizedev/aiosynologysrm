@@ -12,7 +12,10 @@ All notable changes to this project are documented here. The format follows
 
 - `helpers.locate_clients()` with `DeviceView` and `ClientLocation`: combines the client lists of a
   router and its access points into one answer per client (device, Wi-Fi or wired, radio,
-  signal, mesh node), trusting each device's own Wi-Fi list over the router's view.
+  signal, mesh node, the device's own entry), trusting each device's own Wi-Fi list over the
+  router's view and the newest association after roaming. `incomplete` marks unconfirmed
+  locations from incomplete input (a Wi-Fi list missing, a truncated device list), so a tracker
+  keeps the last confirmed location instead of flapping.
 - `get_certificate_fingerprint(..., ssl_context=...)` to reuse an existing non-verifying context.
 - README: which error maps to which Home Assistant reaction.
 
@@ -27,6 +30,10 @@ All notable changes to this project are documented here. The format follows
   again once, so a firmware update does not leave it stuck.
 - Diagnostics respect a remembered failed login instead of trying again, and run the getters
   concurrently (still limited by `max_concurrency`).
+- Only a failed certificate verification or a fingerprint mismatch raises `SrmCertificateError`;
+  other TLS errors (an aborted handshake while the router restarts) are `SrmConnectionError`s.
+- Login codes 408-410 (password expired or to be changed) are authentication errors, remembered
+  like 400-402. `logout()` ignores every `SrmError`.
 - Whole floats (`12.0`) are accepted as integers.
 - The plain-HTTP warning is logged once per host.
 - Units measured: `Utilization` network rates are bytes per second, `load_*` the load averages

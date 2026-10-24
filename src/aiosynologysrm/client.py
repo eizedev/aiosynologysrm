@@ -19,6 +19,7 @@ from .errors import (
     SrmBlockedError,
     SrmCertificateError,
     SrmConnectionError,
+    SrmError,
     SrmNotAllowedError,
     SrmPermissionError,
     SrmResponseError,
@@ -109,7 +110,9 @@ INFO_API: Final = "SYNO.API.Info"
 _SESSION_ERRORS: Final = frozenset({106, 107, 119})  # expired, duplicate login, invalid session id
 _UNSUPPORTED_ERRORS: Final = frozenset({102, 103, 104})  # no such API, method or version
 _PERMISSION_ERRORS: Final = frozenset({105})  # insufficient privilege; 117 is an internal error
-_CREDENTIAL_ERRORS: Final = frozenset({400, 401, 402})  # wrong credentials, disabled, no permission
+# Wrong credentials, disabled account, no permission, password expired or to be changed: all need
+# the user, so they are remembered.
+_CREDENTIAL_ERRORS: Final = frozenset({400, 401, 402, 408, 409, 410})
 _TWO_FACTOR_ERRORS: Final = frozenset({403, 404, 406})  # code needed, code wrong, 2FA enforced
 _BLOCKED_ERROR: Final = 407  # IP address blocked by auto block
 
@@ -272,7 +275,10 @@ class SrmClient:
         # (host, port, reason). Credentials and session ids travel in the body, never in a URL.
         except TimeoutError as err:
             raise SrmTimeoutError("No answer within the timeout") from err
-        except (aiohttp.ClientSSLError, aiohttp.ServerFingerprintMismatch) as err:
+        # Only a failed verification or a pin mismatch means "the certificate is not the one we
+        # trust". Other TLS errors (an aborted handshake while the router restarts) are
+        # connection errors and worth retrying.
+        except (aiohttp.ClientConnectorCertificateError, aiohttp.ServerFingerprintMismatch) as err:
             msg = f"Certificate not trusted ({type(err).__name__})"
             raise SrmCertificateError(msg) from err
         except aiohttp.ClientError as err:
@@ -382,7 +388,7 @@ class SrmClient:
                         "_sid": sid,
                     },
                 )
-            except (SrmConnectionError, SrmResponseError):
+            except SrmError:
                 _LOGGER.debug("Logout from %s failed, ignored", self._base_url)
 
     async def _ensure_login(self, stale_sid: str | None = None) -> str:

@@ -97,7 +97,9 @@ def test_clients_on_a_standalone_access_point_are_found_there() -> None:
     assert any(router_view.get(e.mac_address) == "ethernet" for e in ap.wifi.device_list)
     assert router.wifi is not None
     for entry in router.wifi.device_list:
-        assert located[entry.mac_address or ""].device == "router"
+        assert located[helpers.normalize_mac(entry.mac_address) or ""].device == "router"
+    assert all(loc.entry is not None for loc in located.values())
+    assert not any(loc.incomplete for loc in located.values())
     offline = [loc for loc in located.values() if not loc.online]
     assert offline
     assert all(loc.device is None for loc in offline)
@@ -143,3 +145,70 @@ def test_mesh_clients_keep_their_node() -> None:
     where = helpers.locate_clients([helpers.DeviceView("router", devices)])["aa:bb:cc:dd:ee:02"]
     assert (where.device, where.connection, where.confirmed) == ("router", "wifi", False)
     assert (where.mesh_node_id, where.mesh_node_name, where.signal) == (3, "point", 60)
+
+
+def _devices(*entries: dict[str, Any]) -> NetworkDevices:
+    return NetworkDevices.from_api({"devices": list(entries)})
+
+
+def _wifi(*entries: dict[str, Any]) -> WifiDevices:
+    return WifiDevices.from_api({"device_list": list(entries)})
+
+
+MAC = "aa:bb:cc:dd:ee:03"
+
+
+def test_a_missing_wifi_list_marks_unconfirmed_locations_incomplete() -> None:
+    router, ap = _views()
+    located = helpers.locate_clients([router, helpers.DeviceView("ap", ap.devices)])
+    assert ap.wifi is not None
+    moved = [located[helpers.normalize_mac(e.mac_address) or ""] for e in ap.wifi.device_list]
+    assert all(not loc.confirmed and loc.incomplete for loc in moved)  # keep the last location
+    assert all(not loc.incomplete for loc in located.values() if loc.confirmed)
+
+
+def test_a_truncated_device_list_marks_locations_incomplete() -> None:
+    devices = NetworkDevices.from_api(
+        {
+            "devices": [{"mac": MAC, "is_online": True, "connection": "ethernet"}],
+            "exceed_dev_list_max": True,
+        }
+    )
+    assert helpers.locate_clients([helpers.DeviceView("r", devices, _wifi())])[MAC].incomplete
+
+
+def test_newest_association_wins_after_roaming() -> None:
+    old = _wifi({"mac_address": MAC, "signal": 90, "associate_up_time": 3600})
+    new = _wifi({"mac_address": MAC, "signal": 30, "associate_up_time": 5})
+    views = [helpers.DeviceView("a", _devices(), old), helpers.DeviceView("b", _devices(), new)]
+    assert helpers.locate_clients(views)[MAC].device == "b"
+
+
+def test_mesh_fields_come_from_the_chosen_online_entry() -> None:
+    on_router = {
+        "mac": MAC,
+        "is_online": True,
+        "connection": "wifi",
+        "mesh_node_id": 3,
+        "mesh_node_name": "point",
+    }
+    in_wifi = helpers.locate_clients(
+        [helpers.DeviceView("r", _devices(on_router), _wifi({"mac_address": MAC}))]
+    )[MAC]
+    assert (in_wifi.mesh_node_id, in_wifi.mesh_node_name) == (3, "point")
+    offline_router = {"mac": MAC, "is_online": False, "mesh_node_id": -1}
+    on_ap = {"mac": MAC, "is_online": True, "connection": "wifi"}
+    located = helpers.locate_clients(
+        [
+            helpers.DeviceView("r", _devices(offline_router)),
+            helpers.DeviceView("ap", _devices(on_ap)),
+        ]
+    )[MAC]
+    assert (located.device, located.mesh_node_id) == ("ap", None)
+
+
+def test_view_names_must_be_unique() -> None:
+    with pytest.raises(ValueError, match="own name"):
+        helpers.locate_clients(
+            [helpers.DeviceView("x", _devices()), helpers.DeviceView("x", _devices())]
+        )

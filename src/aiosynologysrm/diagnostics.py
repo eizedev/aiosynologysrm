@@ -25,12 +25,18 @@ import aiohttp
 
 from . import __version__
 from .client import _GETTER_READS, DEFAULT_HTTPS_PORT, DEFAULT_TIMEOUT, SrmClient
-from .errors import SrmApiError, SrmConnectionError, SrmError, SrmResponseError
+from .errors import (
+    SrmApiError,
+    SrmCertificateError,
+    SrmConnectionError,
+    SrmError,
+    SrmResponseError,
+)
 from .helpers import address_scope
 from .tls import get_certificate_fingerprint
 
-# Errors one call can run into while the others still work; a failed login is not one of them.
-_RECOVERABLE = (SrmApiError, SrmResponseError, SrmConnectionError)
+# Every error a single call can raise; one failing call must not lose the rest of the report.
+_RECOVERABLE = (SrmApiError, SrmResponseError, SrmConnectionError, SrmCertificateError)
 
 
 def _type_name(value: Any) -> str:

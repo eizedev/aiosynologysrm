@@ -56,7 +56,7 @@ keeps (DSM and SRM share the Web API framework), plus what SRM itself shows.
 | 106, 107, 119 | session expired, ended by a duplicate login, invalid session id | logged in again once | two logins with the same session name do not cause 107 |
 | 114 | missing required parameters | `SrmApiError` | seen |
 | 117 | unknown internal error | `SrmApiError` | no |
-| 400, 401, 402 | wrong account or password, disabled account, no permission | `SrmAuthenticationError` (remembered) | no |
+| 400, 401, 402, 408, 409, 410 | wrong account or password, disabled account, no permission, password expired or to be changed | `SrmAuthenticationError` (remembered) | no |
 | 403, 404, 406 | two-factor code needed, wrong, or enforced | `SrmTwoFactorRequiredError` (remembered) | no |
 | 407 | "max tries": blocked by auto block | `SrmBlockedError` (remembered; not an authentication error) | SRM ships a matching login message (`error_max_tries`); not triggered on purpose |
 | 4302 | missing or wrong parameters for this API (not in the DSM tables) | `SrmApiError` | seen |

@@ -43,7 +43,10 @@ class SrmApiError(SrmError):
 
 
 class SrmAuthenticationError(SrmApiError):
-    """Login failed: wrong account or password (400), disabled account (401), no permission (402).
+    """Login failed for a reason only the user can fix.
+
+    Wrong account or password (400), disabled account (401), no permission (402), password expired
+    or to be changed (408-410).
 
     Other login codes are plain :class:`SrmApiError`s and not remembered: they can be temporary,
     for example while the router restarts.

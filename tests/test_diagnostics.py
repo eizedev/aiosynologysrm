@@ -13,7 +13,7 @@ import aiohttp
 import pytest
 from aiohttp.test_utils import TestServer
 
-from aiosynologysrm import SrmClient, SrmConnectionError
+from aiosynologysrm import SrmCertificateError, SrmClient, SrmConnectionError
 from aiosynologysrm import diagnostics as diag
 
 from .conftest import PASSWORD, USERNAME, FakeSrm
@@ -158,3 +158,22 @@ def test_unreachable_certificate_is_an_error(
     monkeypatch.setenv("SRM_PASSWORD", "x")
     assert diag.main(["192.0.2.1", "--user", "u"]) == 1
     assert "SrmConnectionError" in capsys.readouterr().err
+
+
+async def test_a_certificate_error_in_one_getter_keeps_the_report(
+    make_client: MakeClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = make_client()
+
+    async def changed() -> Any:
+        raise SrmCertificateError("Certificate not trusted (ServerFingerprintMismatch)")
+
+    monkeypatch.setattr(client, "get_mesh_nodes", changed)
+    monkeypatch.setattr(client, "supports", _always)
+    report = await diag.collect_diagnostics(client)
+    assert report["getters"]["get_mesh_nodes"] == {"result": "SrmCertificateError"}
+    assert report["getters"]["get_system_info"]["result"] == "ok"
+
+
+async def _always(_: Any) -> bool:
+    return True

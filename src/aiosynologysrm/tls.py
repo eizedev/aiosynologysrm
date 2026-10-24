@@ -49,7 +49,7 @@ async def get_certificate_fingerprint(
         raise SrmTimeoutError("No answer within the timeout") from err
     except (OSError, ssl.SSLError) as err:
         msg = f"Connection failed ({type(err).__name__})"
-        raise SrmConnectionError(msg) from None
+        raise SrmConnectionError(msg) from err
     try:
         ssl_object = writer.get_extra_info("ssl_object")
         der = ssl_object.getpeercert(binary_form=True) if ssl_object else None

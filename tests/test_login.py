@@ -13,6 +13,7 @@ import pytest
 from aiosynologysrm import (
     SrmApiError,
     SrmAuthenticationError,
+    SrmCertificateError,
     SrmClient,
     SrmConnectionError,
     SrmError,
@@ -160,3 +161,50 @@ async def test_connection_errors_keep_their_cause(http: aiohttp.ClientSession) -
     with pytest.raises(SrmConnectionError) as err:
         await client.get_catalog()
     assert isinstance(err.value.__cause__, aiohttp.ClientError)
+
+
+class _FailingSession:
+    """A stand-in for aiohttp.ClientSession whose requests raise a given aiohttp error."""
+
+    def __init__(self, error: type[BaseException]) -> None:
+        self.error = error
+
+    def post(self, *_: Any, **__: Any) -> Any:
+        raise self.error.__new__(self.error)  # aiohttp's constructors need a live connection
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (aiohttp.ClientConnectorSSLError, SrmConnectionError),  # e.g. handshake aborted on reboot
+        (aiohttp.ClientConnectorCertificateError, SrmCertificateError),
+        (aiohttp.ServerFingerprintMismatch, SrmCertificateError),
+    ],
+)
+async def test_only_certificate_problems_are_certificate_errors(
+    error: type[BaseException], expected: type[SrmError]
+) -> None:
+    client = SrmClient("192.0.2.1", "u", "p", session=_FailingSession(error))  # type: ignore[arg-type]
+    with pytest.raises(expected) as err:
+        await client.get_catalog()
+    assert type(err.value) is expected
+
+
+async def test_logout_ignores_certificate_errors(fake: FakeSrm, make_client: MakeClient) -> None:
+    client = make_client()
+    await client.login()
+    client._session = _FailingSession(aiohttp.ServerFingerprintMismatch)  # type: ignore[assignment]
+    await client.logout()  # must not raise, e.g. while Home Assistant unloads an entry
+    assert not client.logged_in
+
+
+@pytest.mark.parametrize("code", [401, 402, 408, 409, 410])
+async def test_codes_that_need_the_user_are_remembered(
+    fake: FakeSrm, make_client: MakeClient, code: int
+) -> None:
+    fake.login_error = code
+    client = make_client()
+    for _ in range(2):
+        with pytest.raises(SrmAuthenticationError):
+            await client.get_system_info()
+    assert _logins(fake) == 1

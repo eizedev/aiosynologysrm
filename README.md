@@ -210,13 +210,15 @@ Every error from talking to the router derives from `SrmError`; wrong arguments 
 
 | Error | Meaning | In Home Assistant |
 | --- | --- | --- |
-| `SrmAuthenticationError` | wrong user or password (400), disabled account (401), no permission (402) | `ConfigEntryAuthFailed` (reauth) |
+| `SrmAuthenticationError` | wrong user or password, disabled account, no permission, expired password (400-402, 408-410) | `ConfigEntryAuthFailed` (reauth) |
 | `SrmTwoFactorRequiredError` | the account uses two-factor authentication; pass a fresh `otp_code` | `ConfigEntryAuthFailed`; use an account without 2FA |
 | `SrmBlockedError` | the router blocks logins from this address after failed attempts; credentials may be fine | repair issue, then `login()` once the block expired |
 | `SrmCertificateError` | the certificate is not trusted or does not match the pinned fingerprint | reauth or repair: confirm the new fingerprint |
 | `SrmConnectionError` / `SrmTimeoutError` | the router could not be reached | `ConfigEntryNotReady` / `UpdateFailed` |
 | `SrmSessionError` | the router ended the session right after a new login | `UpdateFailed` |
 | `SrmUnsupportedError` | this router or firmware does not offer the requested data | skip the entity (`supports()`) |
+| `SrmPermissionError` | the account may not use this API; SRM needs an administrator | repair issue |
+| `SrmResponseError` | the router answered with something that is not a valid Web API answer | `UpdateFailed` |
 | `SrmApiError` | any other code, including unknown login codes during a restart | `UpdateFailed` |
 
 After a failed login (authentication, 2FA, blocked) the client sends no further logins until
