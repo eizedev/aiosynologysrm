@@ -10,6 +10,8 @@ All notable changes to this project are documented here. The format follows
 
 - `login(otp_code=...)` to log in again with a fresh two-factor code.
 - A warning in the log when a client is created with `use_https=False`.
+- `supports()` also takes one of the client's getters and checks every read it needs.
+- `Family` (`"ipv4"` or `"ipv6"`) is exported.
 
 ### Changed
 
@@ -21,6 +23,12 @@ All notable changes to this project are documented here. The format follows
 - Connection and certificate errors keep aiohttp's exception as their cause.
 - Error 117 is a plain `SrmApiError`, not `SrmPermissionError`.
 - `normalize_mac()` rejects addresses that mix `:` and `-`.
+- **Breaking:** consistent names across models (rules in `docs/design.md`):
+  `NetworkDevice.ip_address` -> `ipv4_address`, `NetworkDevice.signal_strength` -> `signal`,
+  `ExternalAddress.ipv4`/`ipv6` -> `ipv4_address`/`ipv6_address`, `InterfaceTraffic.device` ->
+  `interface`, `InterfaceTraffic.rx_raw`/`tx_raw` -> `rx_rate_raw`/`tx_rate_raw`,
+  `MeshNode.is_main_router` -> `is_root` (also true for a standalone device).
+- **Breaking:** `SystemInfo.firmware_date` is a `datetime.date`.
 - Documentation: what "read only" covers, mesh setups marked as untested, where external addresses
   come from, the meaning of error codes 105, 117 and 407.
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import date, timedelta
 
 import pytest
 
@@ -25,7 +25,7 @@ def test_utilization_rt2600ac() -> None:
     assert util.cpu_total_percent == 35
     assert util.memory_total_kib is not None
     assert util.memory_total_kib > 0
-    assert "total" in {i.device for i in util.interfaces}
+    assert "total" in {i.interface for i in util.interfaces}
 
 
 def test_network_devices_rt2600ac() -> None:
@@ -37,7 +37,7 @@ def test_network_devices_rt2600ac() -> None:
     wifi = next(d for d in devices.devices if d.connection == "wifi")
     assert wifi.wireless is True
     assert wifi.band is not None
-    assert wifi.signal_strength is not None
+    assert wifi.signal is not None
     assert all(d.mac.startswith("02:00:00:00") for d in devices.devices)
 
 
@@ -101,3 +101,8 @@ def test_boolean_fields(value: object, expected: bool | None) -> None:
     device = NetworkDevice.from_api({"mac": "02:00:00:00:00:01", "is_guest": value})
     assert device is not None
     assert device.guest is expected
+
+
+def test_firmware_date() -> None:
+    assert SystemInfo.from_api({"firmware_date": "2026/09/11"}).firmware_date == date(2026, 9, 11)
+    assert SystemInfo.from_api({"firmware_date": "11.09.2026"}).firmware_date is None

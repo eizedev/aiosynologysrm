@@ -85,3 +85,18 @@ requests (`max_concurrency`, default 2) so it does not swamp the router.
 
 Fields are only given a unit in their name (`_percent`, `_kib`, `_mbps`) when it was verified
 on a router. Values whose unit is not verified yet keep SRM's number as-is and end in `_raw`.
+
+## Naming
+
+- Getters return a tuple of models. They return one object instead when the answer says something
+  about the list as a whole: `NetworkDevices.truncated`, `FirewallRules.default_policy`.
+- Addresses end in `_address`; `ipv4_address` and `ipv6_address` where both families appear, plain
+  `address` where the model already has a `family` or belongs to one. A role comes first:
+  `target_address`.
+- `interface` is SRM's interface name (`eth0`, `lbr0`). `kind` is SRM's own `type` field, which
+  would shadow a builtin; a specific classification has its own name (`device_type`).
+- Rates SRM reports without a verified unit are `rx_rate_raw` / `tx_rate_raw`; counters with a
+  verified unit say so (`bytes_received`).
+- Dates and durations are `date` and `timedelta`, not text.
+- Booleans read as statements (`online`, `linked`, `read_only`); properties derive from fields
+  (`is_root`, `used_percent`).

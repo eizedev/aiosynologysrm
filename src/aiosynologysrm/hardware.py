@@ -180,8 +180,8 @@ class MeshNode:
     raw: Mapping[str, Any] = raw_field()
 
     @property
-    def is_main_router(self) -> bool:
-        """Whether this is the router at the root of the mesh."""
+    def is_root(self) -> bool:
+        """Whether this node is at the top: the main router of a mesh, or a standalone device."""
         return self.parent_node_id == -1
 
     @classmethod

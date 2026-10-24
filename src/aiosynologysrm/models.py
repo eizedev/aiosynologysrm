@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from ._parse import (
@@ -41,13 +41,24 @@ def _uptime(value: Any) -> timedelta | None:
     return to_timedelta(hours=hours, minutes=minutes, seconds=seconds)
 
 
+def _firmware_date(value: Any) -> date | None:
+    """SRM writes the build date as ``2026/09/11``."""
+    text = to_str(value)
+    if text is None:
+        return None
+    try:
+        return datetime.strptime(text, "%Y/%m/%d").date()
+    except ValueError:
+        return None
+
+
 @dataclass(frozen=True, slots=True)
 class SystemInfo:
     """Hardware, firmware and clock of one SRM device (``SYNO.Core.System`` ``info``)."""
 
     model: str | None
     firmware_version: str | None
-    firmware_date: str | None
+    firmware_date: date | None
     cpu_vendor: str | None
     cpu_family: str | None
     cpu_series: str | None
@@ -64,7 +75,7 @@ class SystemInfo:
         return cls(
             model=to_str(data.get("model")),
             firmware_version=to_str(data.get("firmware_ver")),
-            firmware_date=to_str(data.get("firmware_date")),
+            firmware_date=_firmware_date(data.get("firmware_date")),
             cpu_vendor=to_str(data.get("cpu_vendor")),
             cpu_family=to_str(data.get("cpu_family")),
             cpu_series=to_str(data.get("cpu_series")),
@@ -81,9 +92,10 @@ class SystemInfo:
 class InterfaceTraffic:
     """Current traffic of one network interface as SRM reports it."""
 
-    device: str
-    rx_raw: int | None
-    tx_raw: int | None
+    interface: str
+    """SRM's name, for example ``eth0``, ``br0``, or ``total`` for the sum."""
+    rx_rate_raw: int | None
+    tx_rate_raw: int | None
     raw: Mapping[str, Any] = raw_field()
 
 
@@ -125,9 +137,9 @@ class Utilization:
         network = to_list(data.get("network"))
         interfaces = tuple(
             InterfaceTraffic(
-                device=item["device"],
-                rx_raw=to_int(item.get("rx")),
-                tx_raw=to_int(item.get("tx")),
+                interface=item["device"],
+                rx_rate_raw=to_int(item.get("rx")),
+                tx_rate_raw=to_int(item.get("tx")),
                 raw=frozen(item),
             )
             for item in network
@@ -162,14 +174,15 @@ class NetworkDevice:
 
     mac: str
     hostname: str | None
-    ip_address: str | None
+    ipv4_address: str | None
     ipv6_addresses: tuple[str, ...]
     online: bool | None
     wireless: bool | None
     connection: str | None
     band: str | None
     ssid: str | None
-    signal_strength: int | None
+    signal: int | None
+    """SRM's signal quality, 0-100 for Wi-Fi clients; ``None`` for wired ones."""
     link_rate_mbps: int | None
     max_link_rate_mbps: int | None
     rate_quality: str | None
@@ -199,14 +212,14 @@ class NetworkDevice:
         return cls(
             mac=mac,
             hostname=to_str(item.get("hostname")),
-            ip_address=to_str(item.get("ip_addr")),
+            ipv4_address=to_str(item.get("ip_addr")),
             ipv6_addresses=tuple(a.strip() for a in ipv6_addresses),
             online=to_bool(item.get("is_online")),
             wireless=to_bool(item.get("is_wireless")),
             connection=to_str(item.get("connection")),
             band=to_str(item.get("band")),
             ssid=to_str(item.get("wifi_ssid")),
-            signal_strength=to_int(item.get("signalstrength")),
+            signal=to_int(item.get("signalstrength")),
             link_rate_mbps=to_int(item.get("current_rate")),
             max_link_rate_mbps=to_int(item.get("max_rate")),
             rate_quality=to_str(item.get("rate_quality")),

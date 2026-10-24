@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from ssl import SSLContext
 from types import TracebackType
 from typing import Any, Final, Self
@@ -96,6 +96,30 @@ _TWO_FACTOR_ERRORS: Final = frozenset({403, 404, 406})  # code needed, code wron
 _BLOCKED_ERROR: Final = 407  # IP address blocked by auto block
 
 _ALLOWED: Final = frozenset((spec.api, spec.method) for spec in ALL_READS)
+
+# The reads each getter sends, so supports() can answer for a getter as a whole.
+_GETTER_READS: Final[Mapping[str, tuple[ReadSpec, ...]]] = {
+    "get_system_info": (SYSTEM_INFO,),
+    "get_utilization": (UTILIZATION,),
+    "get_network_devices": (NETWORK_DEVICES,),
+    "get_operating_mode": (OPERATING_MODE,),
+    "get_wan_status": (WAN_STATUS,),
+    "get_external_addresses": (EXTERNAL_ADDRESSES,),
+    "get_ipv6_prefixes": (IPV6_PREFIXES,),
+    "get_dhcp_servers": (DHCP_SERVERS,),
+    "get_dhcp_leases": (DHCP_LEASES,),
+    "get_dhcp_reservations": (DHCP_RESERVATIONS,),
+    "get_firewall_rules": (FIREWALL_RULES, FIREWALL_HIT_COUNTS),
+    "get_forward_rules": (FORWARD_RULES,),
+    "get_port_forwards": (PORT_FORWARDS,),
+    "get_port_triggers": (PORT_TRIGGERS,),
+    "get_security_settings": (ALLOW_SRM_FROM_WAN, FIREWALL_CONF, FORWARD_CONF, AUTO_BLOCK),
+    "get_wifi_radios": (WIFI_RADIO_SETTINGS, WIFI_RADIO_STATUS),
+    "get_wifi_clients": (WIFI_CLIENTS,),
+    "get_ethernet_ports": (ETHERNET_PORTS,),
+    "get_mesh_nodes": (MESH_NODES,),
+    "get_usb_volumes": (USB_VOLUMES,),
+}
 
 
 class SrmClient:
@@ -345,9 +369,24 @@ class SrmClient:
             self._catalog = {name: meta for name, meta in data.items() if isinstance(meta, Mapping)}
         return self._catalog
 
-    async def supports(self, spec: ReadSpec) -> bool:
-        """Whether the router offers this read in a version the parser understands."""
-        return await self._pick_version(spec) is not None
+    async def supports(self, target: ReadSpec | Callable[[], Awaitable[object]]) -> bool:
+        """Whether the router offers a read, or everything a getter needs, without sending it.
+
+        Pass a :class:`ReadSpec` or one of this client's getters, for example
+        ``await client.supports(client.get_wifi_radios)``.
+        """
+        if isinstance(target, ReadSpec):
+            specs: tuple[ReadSpec, ...] = (target,)
+        else:
+            name = getattr(target, "__name__", "")
+            if getattr(target, "__self__", None) is not self or name not in _GETTER_READS:
+                msg = "supports() takes a ReadSpec or a getter of this client"
+                raise TypeError(msg)
+            specs = _GETTER_READS[name]
+        for spec in specs:
+            if await self._pick_version(spec) is None:
+                return False
+        return True
 
     async def _pick_version(self, spec: ReadSpec) -> int | None:
         meta = (await self.get_catalog()).get(spec.api)

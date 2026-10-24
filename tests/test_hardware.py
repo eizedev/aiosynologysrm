@@ -56,7 +56,7 @@ async def test_standalone_device_is_its_own_mesh_root(make_client: MakeClient) -
     nodes = await make_client().get_mesh_nodes()
     assert len(nodes) == 1
     assert nodes[0].node_id == 0
-    assert nodes[0].is_main_router
+    assert nodes[0].is_root
     assert nodes[0].online is True
     assert nodes[0].connected_devices
 
@@ -104,6 +104,6 @@ def test_odd_input() -> None:
     assert MeshNode.list_from_api({"nodes": [{"name": "x"}, 2]}) == ()
     node = MeshNode.list_from_api({"nodes": [{"node_id": 2, "parent_node_id": 0}]})[0]
     assert node.online is None
-    assert not node.is_main_router
+    assert not node.is_root
     assert UsbVolume(None, None, None, 0, 0, None).used_percent is None
     assert UsbVolume(None, None, None, 200, 50, None).used_percent == 75.0
