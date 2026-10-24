@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
+from datetime import timedelta
 from typing import Any
 
+_INT = re.compile(r"-?[0-9]+")
 _MAC = re.compile(r"^[0-9a-f]{2}(?:[:-]?[0-9a-f]{2}){5}$")
 
 
@@ -15,9 +17,19 @@ def to_int(value: Any) -> int | None:
         return None
     if isinstance(value, int):
         return value
-    if isinstance(value, str) and value.strip().lstrip("-").isdigit():
+    if isinstance(value, str) and _INT.fullmatch(value.strip()):
         return int(value)
     return None
+
+
+def to_timedelta(**parts: int | None) -> timedelta | None:
+    """Return a timedelta, or ``None`` if a part is missing or the value is out of range."""
+    if any(v is None for v in parts.values()):
+        return None
+    try:
+        return timedelta(**{k: v for k, v in parts.items() if v is not None})
+    except OverflowError:
+        return None
 
 
 def to_str(value: Any) -> str | None:

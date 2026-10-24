@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Any, Literal
 
-from ._parse import normalize_mac, to_bool, to_int, to_list, to_mapping, to_str
+from ._parse import normalize_mac, to_bool, to_int, to_list, to_mapping, to_str, to_timedelta
 
 Family = Literal["ipv4", "ipv6"]
 FAMILIES: tuple[Family, Family] = ("ipv4", "ipv6")
@@ -26,7 +26,7 @@ def _remaining(value: Any) -> timedelta | None:
     if match is None:
         return None
     days, hours, minutes = (int(g) for g in match.groups())
-    return timedelta(days=days, hours=hours, minutes=minutes)
+    return to_timedelta(days=days, hours=hours, minutes=minutes)
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,10 +155,8 @@ class Ipv6Prefix:
                     prefix=item["prefix"],
                     lan_interface=to_str(item.get("lan")),
                     wan_interface=to_str(item.get("wan")),
-                    valid_lifetime=timedelta(seconds=valid) if valid is not None else None,
-                    preferred_lifetime=timedelta(seconds=preferred)
-                    if preferred is not None
-                    else None,
+                    valid_lifetime=to_timedelta(seconds=valid),
+                    preferred_lifetime=to_timedelta(seconds=preferred),
                 )
             )
         return tuple(out)
@@ -193,7 +191,7 @@ class DhcpPool:
             gateway=to_str(data.get("gateway")),
             dns=tuple(d for d in (to_str(data.get("dns1")), to_str(data.get("dns2"))) if d),
             prefix=str(prefix) if isinstance(prefix, (int, str)) and prefix != "" else None,
-            lease_time=timedelta(seconds=lease) if lease is not None else None,
+            lease_time=to_timedelta(seconds=lease),
             raw=data,
         )
 

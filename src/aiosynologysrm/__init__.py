@@ -24,6 +24,7 @@ from .firewall import (
     PortForward,
     PortTrigger,
     SecuritySettings,
+    fingerprint,
 )
 from .hardware import EthernetPort, MeshNode, UsbVolume, WifiClient, WifiRadio
 from .models import (
@@ -91,5 +92,6 @@ __all__ = [
     "WifiClient",
     "WifiRadio",
     "__version__",
+    "fingerprint",
     "normalize_mac",
 ]

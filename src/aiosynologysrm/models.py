@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Any
 
-from ._parse import normalize_mac, to_bool, to_int, to_list, to_mapping, to_str
+from ._parse import normalize_mac, to_bool, to_int, to_list, to_mapping, to_str, to_timedelta
 
 
 def _uptime(value: Any) -> timedelta | None:
@@ -21,10 +21,12 @@ def _uptime(value: Any) -> timedelta | None:
     if not isinstance(value, str):
         return None
     parts = value.split(":")
-    if len(parts) != 3 or not all(p.isdigit() for p in parts):  # noqa: PLR2004
+    if len(parts) != 3:  # noqa: PLR2004
         return None
-    hours, minutes, seconds = (int(p) for p in parts)
-    return timedelta(hours=hours, minutes=minutes, seconds=seconds)
+    hours, minutes, seconds = (to_int(p) for p in parts)
+    if any(p is None or p < 0 for p in (hours, minutes, seconds)):
+        return None
+    return to_timedelta(hours=hours, minutes=minutes, seconds=seconds)
 
 
 @dataclass(frozen=True, slots=True)
