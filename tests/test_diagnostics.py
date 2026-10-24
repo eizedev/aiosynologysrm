@@ -56,6 +56,11 @@ async def test_unsupported_and_failing_getters(fake: FakeSrm, make_client: MakeC
     assert "wan_ipv4_scope" not in report["device"]
 
 
+async def test_counts_can_be_left_out(make_client: MakeClient) -> None:
+    report = await diag.collect_diagnostics(make_client(), counts=False)
+    assert all("count" not in g for g in report["getters"].values())
+
+
 async def test_login_failure_is_reported(make_client: MakeClient) -> None:
     report = await diag.collect_diagnostics(make_client(password="wrong"))
     assert report["error"] == "SrmAuthenticationError 400"
@@ -76,6 +81,8 @@ async def test_command_line(
     args = [str(server.host), "--user", USERNAME, "--port", str(server.port), "--http"]
     assert await asyncio.to_thread(diag.main, args) == 0
     assert json.loads(capsys.readouterr().out)["device"]["model"] == "RT2600ac"
+    assert await asyncio.to_thread(diag.main, [*args, "--no-counts"]) == 0
+    assert "count" not in json.loads(capsys.readouterr().out)["getters"]["get_system_info"]
     monkeypatch.setenv("SRM_PASSWORD", "wrong")
     assert await asyncio.to_thread(diag.main, args) == 1
     assert "SrmAuthenticationError" in capsys.readouterr().err
