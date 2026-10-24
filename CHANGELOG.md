@@ -6,6 +6,24 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `login(otp_code=...)` to log in again with a fresh two-factor code.
+- A warning in the log when a client is created with `use_https=False`.
+
+### Changed
+
+- After a failed login the client no longer logs in by itself: every request raises the same
+  error until `login()` is called. Concurrent reads used to send one failed login each, which
+  could trip SRM's auto block.
+- A router that cannot be reached fails at the API catalog instead of being tried a second time
+  for the login; a fallback login version is no longer remembered.
+- Connection and certificate errors keep aiohttp's exception as their cause.
+- Error 117 is a plain `SrmApiError`, not `SrmPermissionError`.
+- `normalize_mac()` rejects addresses that mix `:` and `-`.
+- Documentation: what "read only" covers, mesh setups marked as untested, where external addresses
+  come from, the meaning of error codes 105, 117 and 407.
+
 ## [0.3.0] - 2026-10-24
 
 ### Added
@@ -22,7 +40,7 @@ All notable changes to this project are documented here. The format follows
 
 - **Breaking:** `verify_ssl` is replaced by `ssl` (`bool`, `ssl.SSLContext` or
   `aiohttp.Fingerprint`). `verify_ssl=False` becomes `ssl=False`.
-- **Breaking:** every model has `raw`, a read-only copy of its payload that is left out of
+- **Breaking:** every model except `Endpoint` (a view on its rule's fields) has `raw`, a read-only copy of its payload that is left out of
   equality, hash and `repr`; models are hashable. Models built from several answers
   (`WifiRadio`, `SecuritySettings`) key their `raw` by answer.
 - **Breaking:** `leases_from_api`, `reservations_from_api` and `radios_from_api` are

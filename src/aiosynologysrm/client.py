@@ -91,7 +91,7 @@ INFO_API: Final = "SYNO.API.Info"
 # Error codes of the Synology Web API framework, shared by DSM and SRM.
 _SESSION_ERRORS: Final = frozenset({106, 107, 119})  # expired, duplicate login, invalid session id
 _UNSUPPORTED_ERRORS: Final = frozenset({102, 103, 104})  # no such API, method or version
-_PERMISSION_ERRORS: Final = frozenset({105, 117})
+_PERMISSION_ERRORS: Final = frozenset({105})  # insufficient privilege; 117 is an internal error
 _TWO_FACTOR_ERRORS: Final = frozenset({403, 404, 406})  # code needed, code wrong, 2FA enforced
 _BLOCKED_ERROR: Final = 407  # IP address blocked by auto block
 
@@ -109,6 +109,10 @@ class SrmClient:
     and an ``aiohttp.Fingerprint`` pins the router's certificate (see
     :func:`aiosynologysrm.get_certificate_fingerprint`). ``otp_code`` is sent with the first login
     only; see :class:`aiosynologysrm.SrmTwoFactorRequiredError`.
+
+    After a failed login the client does not log in again on its own: every request raises the
+    same error until :meth:`login` succeeds. Repeated failed logins would otherwise trip SRM's
+    auto block and lock this host out of the router.
     """
 
     def __init__(
@@ -144,6 +148,9 @@ class SrmClient:
         self._catalog: dict[str, Mapping[str, Any]] | None = None
         self._catalog_lock = asyncio.Lock()
         self._auth_version: int | None = None
+        self._login_failure: SrmAuthenticationError | None = None
+        if not use_https:
+            _LOGGER.warning("Connecting to %s over plain HTTP: the password is not encrypted", host)
 
     async def __aenter__(self) -> Self:
         """Log in when used as an async context manager."""
@@ -189,15 +196,16 @@ class SrmClient:
                     body.extend(chunk)
                     if len(body) > MAX_RESPONSE_BYTES:
                         raise SrmResponseError("Response too large")
+        # The message names only the error type; the chained aiohttp exception keeps the details
+        # (host, port, reason). Credentials and session ids travel in the body, never in a URL.
         except TimeoutError as err:
             raise SrmTimeoutError("No answer within the timeout") from err
         except (aiohttp.ClientSSLError, aiohttp.ServerFingerprintMismatch) as err:
             msg = f"Certificate not trusted ({type(err).__name__})"
-            raise SrmCertificateError(msg) from None
+            raise SrmCertificateError(msg) from err
         except aiohttp.ClientError as err:
-            # The original exception can carry the URL; keep only its type.
             msg = f"Connection failed ({type(err).__name__})"
-            raise SrmConnectionError(msg) from None
+            raise SrmConnectionError(msg) from err
         try:
             envelope = json.loads(body)
         except (ValueError, RecursionError):
@@ -214,26 +222,44 @@ class SrmClient:
             raise SrmResponseError("Error response without a numeric code")
         return code
 
-    async def login(self) -> None:
-        """Log in and store the session id (also done automatically on first use)."""
+    async def login(self, otp_code: str | None = None) -> None:
+        """Log in and store the session id (also done automatically on first use).
+
+        This is also the way to retry after a failed login, for example after an auto block
+        expired, or with a fresh two-factor code once a session ended.
+        """
         async with self._login_lock:
+            self._login_failure = None
+            if otp_code:
+                self._otp_code = otp_code
+            await self._login_or_remember()
+
+    async def _login_or_remember(self) -> None:
+        try:
             await self._login()
+        except SrmAuthenticationError as err:
+            self._login_failure = err
+            raise
 
     async def _login_version(self) -> int:
-        """Pick the highest login version the router offers; fall back to 3 without a catalog."""
-        if self._auth_version is None:
-            version = AUTH_VERSIONS[0]
-            try:
-                meta = (await self.get_catalog()).get(AUTH_API, {})
-            except (SrmApiError, SrmConnectionError, SrmResponseError):
-                meta = {}
-            low, high = meta.get("minVersion"), meta.get("maxVersion")
-            if isinstance(low, int) and isinstance(high, int):
-                offered = [v for v in AUTH_VERSIONS if low <= v <= high]
-                if not offered:
-                    raise SrmUnsupportedError(104, AUTH_API)
-                version = offered[0]
-            self._auth_version = version
+        """Pick the highest login version the router offers; fall back to 3 without a catalog.
+
+        Only a missing or unreadable catalog leads to the fallback, which is not cached; a router
+        that cannot be reached fails here instead of being asked twice.
+        """
+        if self._auth_version is not None:
+            return self._auth_version
+        try:
+            meta = (await self.get_catalog()).get(AUTH_API, {})
+        except (SrmApiError, SrmResponseError):
+            return AUTH_VERSIONS[0]
+        low, high = meta.get("minVersion"), meta.get("maxVersion")
+        if not isinstance(low, int) or not isinstance(high, int):
+            return AUTH_VERSIONS[0]
+        offered = [v for v in AUTH_VERSIONS if low <= v <= high]
+        if not offered:
+            raise SrmUnsupportedError(104, AUTH_API)
+        self._auth_version = offered[0]
         return self._auth_version
 
     async def _login(self) -> None:
@@ -287,8 +313,10 @@ class SrmClient:
 
     async def _ensure_login(self, stale_sid: str | None = None) -> str:
         async with self._login_lock:
+            if self._login_failure is not None:
+                raise self._login_failure
             if self._sid is None or self._sid == stale_sid:
-                await self._login()
+                await self._login_or_remember()
             if self._sid is None:  # pragma: no cover - _login either sets it or raises
                 raise SrmResponseError("Login answer has no session id")
             return self._sid
@@ -336,6 +364,8 @@ class SrmClient:
         Raises :class:`SrmUnsupportedError` if the router does not offer the API in a version
         this library understands, and :class:`SrmNotAllowedError` for anything not allowlisted.
         """
+        # Two checks on purpose: `_ALLOWED` is computed at import, so a spec in ALL_READS that was
+        # changed in place afterwards still cannot send a different call.
         if (spec.api, spec.method) not in _ALLOWED or spec not in ALL_READS:
             raise SrmNotAllowedError(f"{spec.api}.{spec.method} is not an allowed read")
         version = await self._pick_version(spec)
@@ -387,7 +417,12 @@ class SrmClient:
         return WanStatus.from_api(await self._read_object(WAN_STATUS))
 
     async def get_external_addresses(self) -> tuple[ExternalAddress, ...]:
-        """Public IPv4 and IPv6 addresses as the router sees them."""
+        """Public IPv4 and IPv6 addresses as SRM last recorded them.
+
+        SRM does not look them up for this call: it returns what a background service (the
+        DDNS updater, possibly others) stored when it last asked an external service. The values
+        can be out of date, and ``None`` when no service has recorded one.
+        """
         return ExternalAddress.list_from_api(await self.read(EXTERNAL_ADDRESSES))
 
     async def get_ipv6_prefixes(self) -> tuple[Ipv6Prefix, ...]:

@@ -65,6 +65,7 @@ def test_device_without_mac_is_skipped() -> None:
         ("aabbccddeeff", "aa:bb:cc:dd:ee:ff"),
         ("aa-bb-cc-dd-ee-ff", "aa:bb:cc:dd:ee:ff"),
         ("aa:bb:cc:dd:ee", None),
+        ("aa:bb-cc:dd-ee:ff", None),  # mixed separators
         (None, None),
     ],
 )
