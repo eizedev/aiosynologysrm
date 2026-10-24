@@ -37,6 +37,7 @@ from .models import (
     Utilization,
 )
 from .network import (
+    AddressScope,
     DhcpLease,
     DhcpPool,
     DhcpReservation,
@@ -47,6 +48,7 @@ from .network import (
     OperatingMode,
     WanConnection,
     WanStatus,
+    address_scope,
 )
 from .reads import ReadSpec
 from .tls import get_certificate_fingerprint
@@ -57,6 +59,7 @@ except ImportError:  # pragma: no cover - only in a source tree without a build
     __version__ = "0.0.0"
 
 __all__ = [
+    "AddressScope",
     "DhcpLease",
     "DhcpPool",
     "DhcpReservation",
@@ -99,6 +102,7 @@ __all__ = [
     "WifiClient",
     "WifiRadio",
     "__version__",
+    "address_scope",
     "fingerprint",
     "get_certificate_fingerprint",
     "normalize_mac",

@@ -34,6 +34,7 @@ program.
 - [Quick start](#quick-start)
 - [Certificate and two-factor authentication](#certificate-and-two-factor-authentication)
 - [What it can read](#what-it-can-read)
+- [Diagnostics](#diagnostics)
 - [Errors](#errors)
 - [Documentation](#documentation)
 - [Contributing](#contributing)
@@ -163,6 +164,15 @@ list, `aiosynologysrm.fingerprint(item.raw for item in items)` gives the same ki
 
 See the [changelog](https://github.com/eizedev/aiosynologysrm/blob/main/CHANGELOG.md) for what each
 release adds.
+
+## Diagnostics
+
+`aiosynologysrm-diagnostics <router> --user <admin>` (or `python -m aiosynologysrm.diagnostics`)
+prints a JSON report: model, firmware, operating mode, whether the WAN address is public, private
+or behind carrier-grade NAT, and for every getter whether it works, how many items it returned and
+which fields SRM sent. It contains no addresses, names or other values, so it is safe to paste into
+an issue. The password comes from `SRM_PASSWORD` or a prompt; an unknown certificate is shown for
+confirmation. Applications can call `aiosynologysrm.diagnostics.collect_diagnostics(client)`.
 
 ## Errors
 

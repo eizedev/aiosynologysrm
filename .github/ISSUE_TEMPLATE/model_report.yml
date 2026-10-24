@@ -70,6 +70,12 @@ body:
         - label: get_mesh_nodes()
         - label: get_usb_volumes()
   - type: textarea
+    id: diagnostics
+    attributes:
+      label: Output of `aiosynologysrm-diagnostics <router> --user <admin>`
+      description: It contains no addresses or names; paste it as it is.
+      render: json
+  - type: textarea
     id: notes
     attributes:
       label: Errors or odd values (redacted)

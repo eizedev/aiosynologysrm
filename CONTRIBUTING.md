@@ -7,8 +7,14 @@ firmware that is not tested yet.
 
 Open an issue with the **Model or firmware report** form and tell us the model, the SRM version
 (Control Panel, Info Center) and the mode (router, mesh point, standalone access point). Never
-paste raw router output: it contains your MAC addresses, IP addresses and device names. A
-diagnostics command that produces an anonymized report is planned.
+paste raw router output: it contains your MAC addresses, IP addresses and device names. Instead,
+run the diagnostics command and paste its output; it describes what the router answers without
+any of the values:
+
+```sh
+pip install aiosynologysrm
+aiosynologysrm-diagnostics <router address> --user <admin account>
+```
 
 ## Where help is wanted
 

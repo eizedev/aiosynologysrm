@@ -14,7 +14,7 @@ This page is the single place that says what this library supports and how sure 
    [`scripts/anonymize.py`](../scripts/anonymize.py), in `tests/fixtures/<model>-srm-<version>/`.
    A model or firmware counts as **tested** only when its fixtures are in the repository.
 3. **Reports from users** add models and firmware versions: open an issue with the "Model or
-   firmware report" form.
+   firmware report" form and attach the output of `aiosynologysrm-diagnostics`.
 
 ## Status levels
 
@@ -77,7 +77,10 @@ behaves like the tested models; fixtures from it would make that certain
   ([#13](https://github.com/eizedev/aiosynologysrm/issues/13)).
 - `get_wan_status()` reports the address of the WAN interface itself, read live. It is the public
   address only when the router dials in itself (PPPoE, or a modem in bridge mode); behind another
-  router it is a private address.
+  router it is a private address, and on a line with carrier-grade NAT an address from
+  100.64.0.0/10 (seen on a fibre line). `WanConnection.address_scope` tells these apart. Use
+  `get_wan_status()` for the connection itself and `get_external_addresses()` for the address the
+  internet sees; on a standalone access point only the latter means anything.
 
 ## Operating modes
 

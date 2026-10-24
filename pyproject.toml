@@ -28,6 +28,9 @@ classifiers = [
 ]
 dependencies = ["aiohttp>=3.10"]
 
+[project.scripts]
+aiosynologysrm-diagnostics = "aiosynologysrm.diagnostics:main"
+
 [project.urls]
 Homepage = "https://github.com/eizedev/aiosynologysrm"
 Issues = "https://github.com/eizedev/aiosynologysrm/issues"

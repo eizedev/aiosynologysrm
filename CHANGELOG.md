@@ -12,6 +12,11 @@ All notable changes to this project are documented here. The format follows
 - A warning in the log when a client is created with `use_https=False`.
 - `supports()` also takes one of the client's getters and checks every read it needs.
 - `Family` (`"ipv4"` or `"ipv6"`) is exported.
+- `aiosynologysrm-diagnostics` (also `python -m aiosynologysrm.diagnostics`) and
+  `collect_diagnostics(client)`: a report on what a router offers and answers, without any of its
+  values, safe to paste into an issue.
+- `address_scope()` and `WanConnection.address_scope`: whether an address is `public`, `private`
+  (behind another router) or `cgnat` (carrier-grade NAT, no public IPv4 of its own).
 
 ### Changed
 
