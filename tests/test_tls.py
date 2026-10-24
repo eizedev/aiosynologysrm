@@ -74,6 +74,13 @@ async def test_fingerprint_is_the_leaf_certificate_hash(
     assert await get_certificate_fingerprint(HOST, https_server.port) == leaf_fingerprint
 
 
+async def test_fingerprint_accepts_a_bracketed_host(
+    https_server: TestServer, leaf_fingerprint: str
+) -> None:
+    assert https_server.port is not None
+    assert await get_certificate_fingerprint(f"[{HOST}]", https_server.port) == leaf_fingerprint
+
+
 async def test_pinned_fingerprint_connects(
     make_https_client: Callable[..., SrmClient], leaf_fingerprint: str
 ) -> None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import logging
 from collections.abc import Awaitable, Callable, Mapping
@@ -21,37 +22,54 @@ from .errors import (
     SrmNotAllowedError,
     SrmPermissionError,
     SrmResponseError,
+    SrmSessionError,
     SrmTimeoutError,
     SrmTwoFactorRequiredError,
     SrmUnsupportedError,
 )
-from .firewall import FirewallRules, ForwardRule, PortForward, PortTrigger, SecuritySettings
-from .hardware import (
-    EthernetPort,
-    MeshNode,
-    UsbVolume,
-    WifiClient,
-    WifiRadio,
+from .firewall import (
+    AllowSrmFromWan,
+    AutoBlock,
+    FirewallConf,
+    FirewallHitCount,
+    FirewallRules,
+    ForwardConf,
+    ForwardRules,
+    PortForwards,
+    PortTriggers,
 )
-from .models import NetworkDevices, SystemInfo, Utilization
+from .hardware import (
+    EthPortInfo,
+    MeshNodes,
+    StorageVolumes,
+    WifiDevices,
+    WifiRadioSettings,
+    WifiRadioStatus,
+)
+from .models import (
+    NetworkDevices,
+    SystemInfo,
+    Utilization,
+)
 from .network import (
-    DhcpLease,
-    DhcpReservation,
-    DhcpServer,
-    ExternalAddress,
-    Ipv6Prefix,
-    OperatingMode,
-    WanStatus,
+    ConnectionStatus,
+    DhcpClients,
+    DhcpReservations,
+    DhcpServers,
+    ExternalIp,
+    Ipv6Prefixes,
+    Topology,
 )
 from .reads import (
     ALL_READS,
     ALLOW_SRM_FROM_WAN,
     AUTO_BLOCK,
-    DHCP_LEASES,
+    CONNECTION_STATUS,
+    DHCP_CLIENTS,
     DHCP_RESERVATIONS,
     DHCP_SERVERS,
-    ETHERNET_PORTS,
-    EXTERNAL_ADDRESSES,
+    ETH_PORT_INFO,
+    EXTERNAL_IP,
     FIREWALL_CONF,
     FIREWALL_HIT_COUNTS,
     FIREWALL_RULES,
@@ -60,14 +78,13 @@ from .reads import (
     IPV6_PREFIXES,
     MESH_NODES,
     NETWORK_DEVICES,
-    OPERATING_MODE,
     PORT_FORWARDS,
     PORT_TRIGGERS,
     SYSTEM_INFO,
+    TOPOLOGY,
     USB_VOLUMES,
     UTILIZATION,
-    WAN_STATUS,
-    WIFI_CLIENTS,
+    WIFI_DEVICES,
     WIFI_RADIO_SETTINGS,
     WIFI_RADIO_STATUS,
     ReadSpec,
@@ -97,29 +114,49 @@ _BLOCKED_ERROR: Final = 407  # IP address blocked by auto block
 
 _ALLOWED: Final = frozenset((spec.api, spec.method) for spec in ALL_READS)
 
-# The reads each getter sends, so supports() can answer for a getter as a whole.
+# The read each getter sends; supports() and the diagnostics use it.
 _GETTER_READS: Final[Mapping[str, tuple[ReadSpec, ...]]] = {
     "get_system_info": (SYSTEM_INFO,),
     "get_utilization": (UTILIZATION,),
     "get_network_devices": (NETWORK_DEVICES,),
-    "get_operating_mode": (OPERATING_MODE,),
-    "get_wan_status": (WAN_STATUS,),
-    "get_external_addresses": (EXTERNAL_ADDRESSES,),
+    "get_topology": (TOPOLOGY,),
+    "get_connection_status": (CONNECTION_STATUS,),
+    "get_external_ip": (EXTERNAL_IP,),
     "get_ipv6_prefixes": (IPV6_PREFIXES,),
     "get_dhcp_servers": (DHCP_SERVERS,),
-    "get_dhcp_leases": (DHCP_LEASES,),
+    "get_dhcp_clients": (DHCP_CLIENTS,),
     "get_dhcp_reservations": (DHCP_RESERVATIONS,),
-    "get_firewall_rules": (FIREWALL_RULES, FIREWALL_HIT_COUNTS),
+    "get_firewall_rules": (FIREWALL_RULES,),
+    "get_firewall_hit_counts": (FIREWALL_HIT_COUNTS,),
     "get_forward_rules": (FORWARD_RULES,),
     "get_port_forwards": (PORT_FORWARDS,),
     "get_port_triggers": (PORT_TRIGGERS,),
-    "get_security_settings": (ALLOW_SRM_FROM_WAN, FIREWALL_CONF, FORWARD_CONF, AUTO_BLOCK),
-    "get_wifi_radios": (WIFI_RADIO_SETTINGS, WIFI_RADIO_STATUS),
-    "get_wifi_clients": (WIFI_CLIENTS,),
-    "get_ethernet_ports": (ETHERNET_PORTS,),
+    "get_allow_srm_from_wan": (ALLOW_SRM_FROM_WAN,),
+    "get_firewall_conf": (FIREWALL_CONF,),
+    "get_forward_conf": (FORWARD_CONF,),
+    "get_auto_block": (AUTO_BLOCK,),
+    "get_wifi_radio_settings": (WIFI_RADIO_SETTINGS,),
+    "get_wifi_radio_status": (WIFI_RADIO_STATUS,),
+    "get_wifi_devices": (WIFI_DEVICES,),
+    "get_eth_port_info": (ETH_PORT_INFO,),
     "get_mesh_nodes": (MESH_NODES,),
     "get_usb_volumes": (USB_VOLUMES,),
 }
+
+
+def _valid_host(host: str) -> bool:
+    """Tell whether ``host`` is a host name or IP address (not ``host:port``, a path or a user)."""
+    if _is_ipv6(host) or _is_ipv6(host.removeprefix("[").removesuffix("]")):
+        return True
+    return bool(host) and not any(c in host for c in ":/#?@ \t\n")
+
+
+def _is_ipv6(host: str) -> bool:
+    """Whether a host is a bare IPv6 address that needs brackets in a URL."""
+    try:
+        return ipaddress.ip_address(host).version == 6  # noqa: PLR2004 - IP version
+    except ValueError:
+        return False
 
 
 class SrmClient:
@@ -128,10 +165,12 @@ class SrmClient:
     The aiohttp session is passed in and never closed here, so applications such as Home
     Assistant can share theirs. Only calls from :mod:`aiosynologysrm.reads` can be sent.
 
-    ``ssl`` is passed to aiohttp: ``True`` verifies the certificate against the system's
-    certificate authorities, ``False`` skips verification, an ``ssl.SSLContext`` is used as given,
-    and an ``aiohttp.Fingerprint`` pins the router's certificate (see
-    :func:`aiosynologysrm.get_certificate_fingerprint`). ``otp_code`` is sent with the first login
+    ``ssl`` is passed to aiohttp for every request: an ``aiohttp.Fingerprint`` pins the router's
+    certificate (see :func:`aiosynologysrm.get_certificate_fingerprint`), an ``ssl.SSLContext`` is
+    used as given, ``False`` skips verification. ``True`` means aiohttp's default, which is the
+    *session's* setting: with a session created without verification (for example Home Assistant's
+    ``async_get_clientsession(hass, verify_ssl=False)``) nothing is checked. Pass a fingerprint or
+    an ``SSLContext`` to be sure. ``otp_code`` is sent with the first login
     only; see :class:`aiosynologysrm.SrmTwoFactorRequiredError`.
 
     After a failed login the client does not log in again on its own: every request raises the
@@ -155,9 +194,13 @@ class SrmClient:
         session_name: str = "aiosynologysrm",
     ) -> None:
         """Prepare the client; nothing is sent until the first request."""
+        if not _valid_host(host):
+            msg = "host must be a host name or an IP address, without port, path or user"
+            raise ValueError(msg)
         if port is None:
             port = DEFAULT_HTTPS_PORT if use_https else DEFAULT_HTTP_PORT
-        bracketed = f"[{host}]" if ":" in host and not host.startswith("[") else host
+        host = host.removeprefix("[").removesuffix("]")
+        bracketed = f"[{host}]" if _is_ipv6(host) else host
         self._base_url = f"{'https' if use_https else 'http'}://{bracketed}:{port}/webapi"
         self._username = username
         self._password = password
@@ -172,7 +215,9 @@ class SrmClient:
         self._catalog: dict[str, Mapping[str, Any]] | None = None
         self._catalog_lock = asyncio.Lock()
         self._auth_version: int | None = None
-        self._login_failure: SrmAuthenticationError | None = None
+        # The failed login's class, code and API; a fresh exception is raised from it each time,
+        # so no traceback (with the password in a frame) is kept or grows.
+        self._login_failure: tuple[type[SrmAuthenticationError], int, str | None] | None = None
         if not use_https:
             _LOGGER.warning("Connecting to %s over plain HTTP: the password is not encrypted", host)
 
@@ -262,7 +307,7 @@ class SrmClient:
         try:
             await self._login()
         except SrmAuthenticationError as err:
-            self._login_failure = err
+            self._login_failure = (type(err), err.code, err.api)
             raise
 
     async def _login_version(self) -> int:
@@ -338,7 +383,8 @@ class SrmClient:
     async def _ensure_login(self, stale_sid: str | None = None) -> str:
         async with self._login_lock:
             if self._login_failure is not None:
-                raise self._login_failure
+                kind, code, api = self._login_failure
+                raise kind(code, api)
             if self._sid is None or self._sid == stale_sid:
                 await self._login_or_remember()
             if self._sid is None:  # pragma: no cover - _login either sets it or raises
@@ -373,7 +419,7 @@ class SrmClient:
         """Whether the router offers a read, or everything a getter needs, without sending it.
 
         Pass a :class:`ReadSpec` or one of this client's getters, for example
-        ``await client.supports(client.get_wifi_radios)``.
+        ``await client.supports(client.get_wifi_radio_status)``.
         """
         if isinstance(target, ReadSpec):
             specs: tuple[ReadSpec, ...] = (target,)
@@ -403,18 +449,20 @@ class SrmClient:
         Raises :class:`SrmUnsupportedError` if the router does not offer the API in a version
         this library understands, and :class:`SrmNotAllowedError` for anything not allowlisted.
         """
-        # Two checks on purpose: `_ALLOWED` is computed at import, so a spec in ALL_READS that was
-        # changed in place afterwards still cannot send a different call.
+        # Two checks on purpose: `_ALLOWED` is computed at import, so a spec in ALL_READS whose api
+        # or method was changed in place afterwards is still refused. Its params and versions are
+        # not guarded that way; the allowlist is a safeguard, not a security boundary.
         if (spec.api, spec.method) not in _ALLOWED or spec not in ALL_READS:
             raise SrmNotAllowedError(f"{spec.api}.{spec.method} is not an allowed read")
         version = await self._pick_version(spec)
         if version is None:
             raise SrmUnsupportedError(104, spec.api)
+        # Parameters first, so they can never replace api, method or version.
         form = {
+            **dict(spec.params),
             "api": spec.api,
             "method": spec.method,
             "version": str(version),
-            **dict(spec.params),
         }
         sid = await self._ensure_login()
         for attempt in range(2):
@@ -431,106 +479,113 @@ class SrmClient:
             if code in _PERMISSION_ERRORS:
                 raise SrmPermissionError(code, spec.api)
             if code in _SESSION_ERRORS:
-                raise SrmAuthenticationError(code, spec.api)
+                raise SrmSessionError(code, spec.api)
             raise SrmApiError(code, spec.api)
-        raise SrmAuthenticationError(106, spec.api)  # pragma: no cover - loop always returns
+        raise SrmSessionError(106, spec.api)  # pragma: no cover - loop always returns
 
     async def get_system_info(self) -> SystemInfo:
-        """Model, firmware, CPU, RAM, uptime."""
+        """Model, firmware, CPU, RAM, uptime, clock (``SYNO.Core.System`` ``info``)."""
         return SystemInfo.from_api(await self._read_object(SYSTEM_INFO))
 
     async def get_utilization(self) -> Utilization:
-        """CPU, memory and interface load."""
+        """CPU, memory and interface load (``SYNO.Core.System.Utilization``)."""
         return Utilization.from_api(await self._read_object(UTILIZATION))
 
     async def get_network_devices(self) -> NetworkDevices:
-        """Every client this device knows, online or offline."""
+        """Every client this device knows, online or not (``NSM.Device``)."""
         return NetworkDevices.from_api(await self._read_object(NETWORK_DEVICES))
 
-    async def get_operating_mode(self) -> OperatingMode:
-        """Return whether the device runs as router or as standalone access point."""
-        return OperatingMode.from_api(await self._read_object(OPERATING_MODE))
+    async def get_topology(self) -> Topology:
+        """Operating mode: router or standalone access point (``Router.Topology``)."""
+        return Topology.from_api(await self._read_object(TOPOLOGY))
 
-    async def get_wan_status(self) -> WanStatus:
-        """Internet connection state for IPv4 and IPv6."""
-        return WanStatus.from_api(await self._read_object(WAN_STATUS))
+    async def get_connection_status(self) -> ConnectionStatus:
+        """State and own address of the WAN connection, read live (``Router.ConnectionStatus``)."""
+        return ConnectionStatus.from_api(await self._read_object(CONNECTION_STATUS))
 
-    async def get_external_addresses(self) -> tuple[ExternalAddress, ...]:
-        """Public IPv4 and IPv6 addresses as SRM last recorded them.
+    async def get_external_ip(self) -> tuple[ExternalIp, ...]:
+        """Addresses the internet sees, as SRM last recorded them (``SYNO.Core.DDNS.ExtIP``).
 
-        SRM does not look them up for this call: it returns what a background service (the
-        DDNS updater, possibly others) stored when it last asked an external service. The values
-        can be out of date, and ``None`` when no service has recorded one.
+        SRM does not look them up for this call: a background service (the DDNS updater, possibly
+        others) stores them. They can be out of date, and ``None`` when nothing recorded one.
         """
-        return ExternalAddress.list_from_api(await self.read(EXTERNAL_ADDRESSES))
+        return ExternalIp.list_from_api(await self.read(EXTERNAL_IP))
 
-    async def get_ipv6_prefixes(self) -> tuple[Ipv6Prefix, ...]:
-        """Return the delegated IPv6 prefixes and the local networks they serve."""
-        return Ipv6Prefix.list_from_api(await self._read_object(IPV6_PREFIXES))
+    async def get_ipv6_prefixes(self) -> Ipv6Prefixes:
+        """Return the delegated IPv6 prefixes and the local network each is used for."""
+        return Ipv6Prefixes.from_api(await self._read_object(IPV6_PREFIXES))
 
-    async def get_dhcp_servers(self) -> tuple[DhcpServer, ...]:
-        """DHCP settings (address ranges, gateway, DNS, lease time) per local network."""
-        return DhcpServer.list_from_api(await self._read_object(DHCP_SERVERS))
+    async def get_dhcp_servers(self) -> DhcpServers:
+        """DHCP settings per local network (``SYNO.Core.Network.DHCPServer``)."""
+        return DhcpServers.from_api(await self._read_object(DHCP_SERVERS))
 
-    async def get_dhcp_leases(self) -> tuple[DhcpLease, ...]:
-        """Addresses handed out by the DHCP server, IPv4 and IPv6, on every local network."""
-        return DhcpLease.list_from_api(await self._read_object(DHCP_LEASES))
+    async def get_dhcp_clients(self) -> DhcpClients:
+        """Handed-out addresses with their remaining lease time (``DHCPServer.ClientList``)."""
+        return DhcpClients.from_api(await self._read_object(DHCP_CLIENTS))
 
-    async def get_dhcp_reservations(self) -> tuple[DhcpReservation, ...]:
-        """Return the fixed address assignments, IPv4 and IPv6."""
-        return DhcpReservation.list_from_api(await self._read_object(DHCP_RESERVATIONS))
+    async def get_dhcp_reservations(self) -> DhcpReservations:
+        """Return the fixed address assignments (``DHCPServer.Reservation``)."""
+        return DhcpReservations.from_api(await self._read_object(DHCP_RESERVATIONS))
 
     async def get_firewall_rules(self) -> FirewallRules:
-        """Return the default policies and every firewall rule with its hit counter."""
-        rules, hits = await asyncio.gather(
-            self._read_object(FIREWALL_RULES), self.read(FIREWALL_HIT_COUNTS)
-        )
-        return FirewallRules.from_api(rules, hits)
+        """Default policies and the rule list (``Security.Firewall.Rules``)."""
+        return FirewallRules.from_api(await self._read_object(FIREWALL_RULES))
 
-    async def get_forward_rules(self) -> tuple[ForwardRule, ...]:
-        """Return the firewall openings SRM created for port forwards, DMZ and UPnP."""
-        return ForwardRule.list_from_api(await self._read_object(FORWARD_RULES))
+    async def get_firewall_hit_counts(self) -> tuple[FirewallHitCount, ...]:
+        """Packet counters of the kernel rules behind each firewall rule (``Rules.HitCount``)."""
+        return FirewallHitCount.list_from_api(await self.read(FIREWALL_HIT_COUNTS))
 
-    async def get_port_forwards(self) -> tuple[PortForward, ...]:
-        """Return port forwards, including those devices opened through UPnP."""
-        return PortForward.list_from_api(await self._read_object(PORT_FORWARDS))
+    async def get_forward_rules(self) -> ForwardRules:
+        """Firewall openings SRM created for port forwards, DMZ and UPnP."""
+        return ForwardRules.from_api(await self._read_object(FORWARD_RULES))
 
-    async def get_port_triggers(self) -> tuple[PortTrigger, ...]:
-        """Return the port triggering rules."""
-        return PortTrigger.list_from_api(await self._read_object(PORT_TRIGGERS))
+    async def get_port_forwards(self) -> PortForwards:
+        """Port forwards, including those devices opened through UPnP."""
+        return PortForwards.from_api(await self._read_object(PORT_FORWARDS))
 
-    async def get_security_settings(self) -> SecuritySettings:
-        """Return what the internet may reach: SRM access, automatic openings, auto block."""
-        wan, conf, forward, block = await asyncio.gather(
-            self._read_object(ALLOW_SRM_FROM_WAN),
-            self._read_object(FIREWALL_CONF),
-            self._read_object(FORWARD_CONF),
-            self._read_object(AUTO_BLOCK),
-        )
-        return SecuritySettings.from_api(wan, conf, forward, block)
+    async def get_port_triggers(self) -> PortTriggers:
+        """Port triggering rules (``Router.PortTrigger``)."""
+        return PortTriggers.from_api(await self._read_object(PORT_TRIGGERS))
 
-    async def get_wifi_radios(self) -> tuple[WifiRadio, ...]:
-        """Return each Wi-Fi radio with its channel in use, settings and BSSID."""
-        settings, status = await asyncio.gather(
-            self._read_object(WIFI_RADIO_SETTINGS), self._read_object(WIFI_RADIO_STATUS)
-        )
-        return WifiRadio.list_from_api(settings, status)
+    async def get_allow_srm_from_wan(self) -> AllowSrmFromWan:
+        """Whether SRM itself can be reached from the internet."""
+        return AllowSrmFromWan.from_api(await self._read_object(ALLOW_SRM_FROM_WAN))
 
-    async def get_wifi_clients(self) -> tuple[WifiClient, ...]:
-        """Return radio statistics of the clients on this device's own Wi-Fi."""
-        return WifiClient.list_from_api(await self._read_object(WIFI_CLIENTS))
+    async def get_firewall_conf(self) -> FirewallConf:
+        """General firewall settings (``Security.Firewall.Conf``)."""
+        return FirewallConf.from_api(await self._read_object(FIREWALL_CONF))
 
-    async def get_ethernet_ports(self) -> tuple[EthernetPort, ...]:
-        """Return link state and speed of every Ethernet port."""
-        return EthernetPort.list_from_api(await self._read_object(ETHERNET_PORTS))
+    async def get_forward_conf(self) -> ForwardConf:
+        """Whether SRM opens the firewall for port forwards, DMZ and UPnP by itself."""
+        return ForwardConf.from_api(await self._read_object(FORWARD_CONF))
 
-    async def get_mesh_nodes(self) -> tuple[MeshNode, ...]:
-        """Return the router and its mesh points (a standalone device lists itself)."""
-        return MeshNode.list_from_api(await self._read_object(MESH_NODES))
+    async def get_auto_block(self) -> AutoBlock:
+        """Blocking of addresses after failed logins (``Security.AutoBlock``)."""
+        return AutoBlock.from_api(await self._read_object(AUTO_BLOCK))
 
-    async def get_usb_volumes(self) -> tuple[UsbVolume, ...]:
-        """Return volumes on USB storage attached to the device."""
-        return UsbVolume.list_from_api(await self._read_object(USB_VOLUMES))
+    async def get_wifi_radio_settings(self) -> WifiRadioSettings:
+        """Return the configuration of each Wi-Fi radio (``SYNO.Wifi.Radio.Setting``)."""
+        return WifiRadioSettings.from_api(await self._read_object(WIFI_RADIO_SETTINGS))
+
+    async def get_wifi_radio_status(self) -> WifiRadioStatus:
+        """Channel in use and BSSID of each Wi-Fi radio (``SYNO.Wifi.Radio.Status``)."""
+        return WifiRadioStatus.from_api(await self._read_object(WIFI_RADIO_STATUS))
+
+    async def get_wifi_devices(self) -> WifiDevices:
+        """Clients on this device's own Wi-Fi with signal and traffic (``SYNO.Wifi.Device``)."""
+        return WifiDevices.from_api(await self._read_object(WIFI_DEVICES))
+
+    async def get_eth_port_info(self) -> EthPortInfo:
+        """Link state and speed of every Ethernet port (``Mesh.Network.EthPortInfo``)."""
+        return EthPortInfo.from_api(await self._read_object(ETH_PORT_INFO))
+
+    async def get_mesh_nodes(self) -> MeshNodes:
+        """Return the router and its mesh points (``SYNO.Mesh.Node.List``)."""
+        return MeshNodes.from_api(await self._read_object(MESH_NODES))
+
+    async def get_usb_volumes(self) -> StorageVolumes:
+        """Volumes on USB storage (``SYNO.Core.Storage.Volume``, external)."""
+        return StorageVolumes.from_api(await self._read_object(USB_VOLUMES))
 
     async def _read_object(self, spec: ReadSpec) -> Mapping[str, Any]:
         data = await self.read(spec)

@@ -1,256 +1,165 @@
-"""Typed views of SRM responses.
+"""Typed views of SRM answers: system, utilization and the device list.
 
-Parsing is tolerant: a missing or oddly typed field becomes ``None`` instead of an exception,
-because SRM models and firmware versions differ. Every model keeps the payload it was built from
-in ``raw``, for fields this library does not map yet: a read-only copy that is left out of
-equality, hash and ``repr``. Models are built by their ``from_api`` or ``list_from_api`` class
-methods. Units are documented only where they were verified against a router; ``*_raw`` fields
-are passed through as SRM reports them.
+Every model mirrors one SRM object. Field names are SRM's keys in snake_case (``transferRXRate``
+-> ``transfer_rx_rate``), typos included (``is_baned``); values keep SRM's units and formats and
+are only converted to Python types. Parsing is tolerant: a missing or oddly typed field becomes
+``None``. Each model keeps the object it was built from in ``raw``, a read-only copy that is left
+out of equality, hash and ``repr``, for keys this library does not map. Anything derived (sums,
+durations, which node is the root) lives in :mod:`aiosynologysrm.helpers`.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
 from typing import Any
 
-from ._parse import (
-    frozen,
-    normalize_mac,
-    raw_field,
-    to_bool,
-    to_int,
-    to_list,
-    to_mapping,
-    to_str,
-    to_timedelta,
-)
-
-
-def _uptime(value: Any) -> timedelta | None:
-    """Parse SRM's ``hours:minutes:seconds`` uptime (hours can exceed 24)."""
-    if not isinstance(value, str):
-        return None
-    parts = value.split(":")
-    if len(parts) != 3:  # noqa: PLR2004
-        return None
-    hours, minutes, seconds = (to_int(p) for p in parts)
-    if any(p is None or p < 0 for p in (hours, minutes, seconds)):
-        return None
-    return to_timedelta(hours=hours, minutes=minutes, seconds=seconds)
-
-
-def _firmware_date(value: Any) -> date | None:
-    """SRM writes the build date as ``2026/09/11``."""
-    text = to_str(value)
-    if text is None:
-        return None
-    try:
-        return datetime.strptime(text, "%Y/%m/%d").date()
-    except ValueError:
-        return None
+from ._parse import SrmModel, many, one, raw_field, srm, to_bool, to_int, to_str
 
 
 @dataclass(frozen=True, slots=True)
-class SystemInfo:
-    """Hardware, firmware and clock of one SRM device (``SYNO.Core.System`` ``info``)."""
+class UsbDevice(SrmModel):
+    """A USB device attached to the router, as ``SYNO.Core.System`` ``info`` lists it."""
 
-    model: str | None
-    firmware_version: str | None
-    firmware_date: date | None
-    cpu_vendor: str | None
-    cpu_family: str | None
-    cpu_series: str | None
-    cpu_cores: int | None
-    cpu_clock_mhz: int | None
-    ram_mb: int | None
-    uptime: timedelta | None
-    time_zone: str | None
-    raw: Mapping[str, Any] = raw_field()
-
-    @classmethod
-    def from_api(cls, data: Mapping[str, Any]) -> SystemInfo:
-        """Build from the ``data`` member of the response."""
-        return cls(
-            model=to_str(data.get("model")),
-            firmware_version=to_str(data.get("firmware_ver")),
-            firmware_date=_firmware_date(data.get("firmware_date")),
-            cpu_vendor=to_str(data.get("cpu_vendor")),
-            cpu_family=to_str(data.get("cpu_family")),
-            cpu_series=to_str(data.get("cpu_series")),
-            cpu_cores=to_int(data.get("cpu_cores")),
-            cpu_clock_mhz=to_int(data.get("cpu_clock_speed")),
-            ram_mb=to_int(data.get("ram_size")),
-            uptime=_uptime(data.get("up_time")),
-            time_zone=to_str(data.get("time_zone")),
-            raw=frozen(data),
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class InterfaceTraffic:
-    """Current traffic of one network interface as SRM reports it."""
-
-    interface: str
-    """SRM's name, for example ``eth0``, ``br0``, or ``total`` for the sum."""
-    rx_rate_raw: int | None
-    tx_rate_raw: int | None
+    cls: str | None = srm("cls", to_str)
+    producer: str | None = srm("producer", to_str)
+    product: str | None = srm("product", to_str)
     raw: Mapping[str, Any] = raw_field()
 
 
 @dataclass(frozen=True, slots=True)
-class Utilization:
-    """CPU, memory and interface load (``SYNO.Core.System.Utilization`` ``get``).
+class SystemInfo(SrmModel):
+    """Hardware, firmware and clock of one SRM device (``SYNO.Core.System`` ``info``).
 
-    Load percentages are 0-100. Memory sizes are in KiB, as SRM reports them.
+    ``up_time`` is SRM's ``hours:minutes:seconds`` text, ``firmware_date`` its ``YYYY/MM/DD``
+    text; :mod:`aiosynologysrm.helpers` turns both into Python values.
     """
 
-    cpu_user_percent: int | None
-    cpu_system_percent: int | None
-    cpu_other_percent: int | None
-    load_1min_raw: int | None
-    load_5min_raw: int | None
-    load_15min_raw: int | None
-    memory_usage_percent: int | None
-    memory_total_kib: int | None
-    memory_available_kib: int | None
-    memory_cached_kib: int | None
-    memory_buffer_kib: int | None
-    swap_usage_percent: int | None
-    interfaces: tuple[InterfaceTraffic, ...]
+    model: str | None = srm("model", to_str)
+    serial: str | None = srm("serial", to_str)
+    firmware_ver: str | None = srm("firmware_ver", to_str)
+    firmware_date: str | None = srm("firmware_date", to_str)
+    cpu_vendor: str | None = srm("cpu_vendor", to_str)
+    cpu_family: str | None = srm("cpu_family", to_str)
+    cpu_series: str | None = srm("cpu_series", to_str)
+    cpu_cores: int | None = srm("cpu_cores", to_int)
+    cpu_clock_speed: int | None = srm("cpu_clock_speed", to_int)
+    """MHz."""
+    ram_size: int | None = srm("ram_size", to_int)
+    """MB."""
+    up_time: str | None = srm("up_time", to_str)
+    time: str | None = srm("time", to_str)
+    time_zone: str | None = srm("time_zone", to_str)
+    enabled_ntp: bool | None = srm("enabled_ntp", to_bool)
+    ntp_server: str | None = srm("ntp_server", to_str)
+    usb_dev: tuple[UsbDevice, ...] = srm("usb_dev", many(UsbDevice))
     raw: Mapping[str, Any] = raw_field()
-
-    @property
-    def cpu_total_percent(self) -> int | None:
-        """Sum of user, system and other load, if all three are known."""
-        parts = (self.cpu_user_percent, self.cpu_system_percent, self.cpu_other_percent)
-        if any(p is None for p in parts):
-            return None
-        return sum(p for p in parts if p is not None)
-
-    @classmethod
-    def from_api(cls, data: Mapping[str, Any]) -> Utilization:
-        """Build from the ``data`` member of the response."""
-        cpu = to_mapping(data.get("cpu"))
-        memory = to_mapping(data.get("memory"))
-        network = to_list(data.get("network"))
-        interfaces = tuple(
-            InterfaceTraffic(
-                interface=item["device"],
-                rx_rate_raw=to_int(item.get("rx")),
-                tx_rate_raw=to_int(item.get("tx")),
-                raw=frozen(item),
-            )
-            for item in network
-            if isinstance(item, Mapping) and isinstance(item.get("device"), str)
-        )
-        return cls(
-            cpu_user_percent=to_int(cpu.get("user_load")),
-            cpu_system_percent=to_int(cpu.get("system_load")),
-            cpu_other_percent=to_int(cpu.get("other_load")),
-            load_1min_raw=to_int(cpu.get("1min_load")),
-            load_5min_raw=to_int(cpu.get("5min_load")),
-            load_15min_raw=to_int(cpu.get("15min_load")),
-            memory_usage_percent=to_int(memory.get("real_usage")),
-            memory_total_kib=to_int(memory.get("total_real")),
-            memory_available_kib=to_int(memory.get("avail_real")),
-            memory_cached_kib=to_int(memory.get("cached")),
-            memory_buffer_kib=to_int(memory.get("buffer")),
-            swap_usage_percent=to_int(memory.get("swap_usage")),
-            interfaces=interfaces,
-            raw=frozen(data),
-        )
 
 
 @dataclass(frozen=True, slots=True)
-class NetworkDevice:
-    """A client the router knows, online or not (``SYNO.Core.Network.NSM.Device`` ``get``).
+class UtilizationCpu(SrmModel):
+    """CPU load in percent; the ``load_*`` values are SRM's load averages, unit not verified."""
 
-    ``wireless`` and ``connection`` describe the link as this device sees it: behind a standalone
-    access point, a Wi-Fi client appears as wired on the router. Merging the lists of several
-    devices is up to the caller.
+    device: str | None = srm("device", to_str)
+    user_load: int | None = srm("user_load", to_int)
+    system_load: int | None = srm("system_load", to_int)
+    other_load: int | None = srm("other_load", to_int)
+    load_1min: int | None = srm("1min_load", to_int)
+    load_5min: int | None = srm("5min_load", to_int)
+    load_15min: int | None = srm("15min_load", to_int)
+    raw: Mapping[str, Any] = raw_field()
+
+
+@dataclass(frozen=True, slots=True)
+class UtilizationMemory(SrmModel):
+    """Memory use; sizes in KiB, ``real_usage`` and ``swap_usage`` in percent."""
+
+    device: str | None = srm("device", to_str)
+    memory_size: int | None = srm("memory_size", to_int)
+    total_real: int | None = srm("total_real", to_int)
+    avail_real: int | None = srm("avail_real", to_int)
+    buffer: int | None = srm("buffer", to_int)
+    cached: int | None = srm("cached", to_int)
+    real_usage: int | None = srm("real_usage", to_int)
+    total_swap: int | None = srm("total_swap", to_int)
+    avail_swap: int | None = srm("avail_swap", to_int)
+    swap_usage: int | None = srm("swap_usage", to_int)
+    si_disk: int | None = srm("si_disk", to_int)
+    so_disk: int | None = srm("so_disk", to_int)
+    raw: Mapping[str, Any] = raw_field()
+
+
+@dataclass(frozen=True, slots=True)
+class UtilizationNetwork(SrmModel):
+    """Current traffic of one interface (``total`` is the sum); unit not verified."""
+
+    device: str | None = srm("device", to_str)
+    rx: int | None = srm("rx", to_int)
+    tx: int | None = srm("tx", to_int)
+    raw: Mapping[str, Any] = raw_field()
+
+
+@dataclass(frozen=True, slots=True)
+class Utilization(SrmModel):
+    """CPU, memory and interface load (``SYNO.Core.System.Utilization`` ``get``)."""
+
+    cpu: UtilizationCpu | None = srm("cpu", one(UtilizationCpu))
+    memory: UtilizationMemory | None = srm("memory", one(UtilizationMemory))
+    network: tuple[UtilizationNetwork, ...] = srm("network", many(UtilizationNetwork))
+    time: int | None = srm("time", to_int)
+    raw: Mapping[str, Any] = raw_field()
+
+
+@dataclass(frozen=True, slots=True)
+class NetworkDevice(SrmModel):
+    """A client the device knows, online or not (``SYNO.Core.Network.NSM.Device`` ``get``).
+
+    ``connection`` and ``is_wireless`` describe the link as this device sees it: behind a
+    standalone access point, a Wi-Fi client appears as wired on the router. ``ip6_addr`` is SRM's
+    comma-separated text; :func:`aiosynologysrm.helpers.split_addresses` splits it.
     """
 
-    mac: str
-    hostname: str | None
-    ipv4_address: str | None
-    ipv6_addresses: tuple[str, ...]
-    online: bool | None
-    wireless: bool | None
-    connection: str | None
-    band: str | None
-    ssid: str | None
-    signal: int | None
-    """SRM's signal quality, 0-100 for Wi-Fi clients; ``None`` for wired ones."""
-    link_rate_mbps: int | None
-    max_link_rate_mbps: int | None
-    rate_quality: str | None
-    rx_rate_raw: int | None
-    tx_rate_raw: int | None
-    mesh_node_id: int | None
-    mesh_node_name: str | None
-    network: str | None
-    device_type: str | None
-    guest: bool | None
-    blocked: bool | None
+    mac: str | None = srm("mac", to_str)
+    hostname: str | None = srm("hostname", to_str)
+    ip_addr: str | None = srm("ip_addr", to_str)
+    ip6_addr: str | None = srm("ip6_addr", to_str)
+    is_online: bool | None = srm("is_online", to_bool)
+    is_wireless: bool | None = srm("is_wireless", to_bool)
+    connection: str | None = srm("connection", to_str)
+    band: str | None = srm("band", to_str)
+    wifi_ssid: str | None = srm("wifi_ssid", to_str)
+    wifi_network_id: int | None = srm("wifi_network_id", to_int)
+    wifi_profile_name: str | None = srm("wifi_profile_name", to_str)
+    signalstrength: int | None = srm("signalstrength", to_int)
+    """0-100 for Wi-Fi clients."""
+    current_rate: int | None = srm("current_rate", to_int)
+    """Mbit/s."""
+    max_rate: int | None = srm("max_rate", to_int)
+    """Mbit/s."""
+    rate_quality: str | None = srm("rate_quality", to_str)
+    transfer_rx_rate: int | None = srm("transferRXRate", to_int)
+    transfer_tx_rate: int | None = srm("transferTXRate", to_int)
+    mesh_node_id: int | None = srm("mesh_node_id", to_int)
+    mesh_node_name: str | None = srm("mesh_node_name", to_str)
+    network: str | None = srm("network", to_str)
+    dev_type: str | None = srm("dev_type", to_str)
+    is_manual_dev_type: bool | None = srm("is_manual_dev_type", to_bool)
+    is_manual_hostname: bool | None = srm("is_manual_hostname", to_bool)
+    is_guest: bool | None = srm("is_guest", to_bool)
+    is_baned: bool | None = srm("is_baned", to_bool)
+    """SRM's spelling: the device is blocked."""
+    is_beamforming_on: bool | None = srm("is_beamforming_on", to_bool)
+    is_qos: bool | None = srm("is_qos", to_bool)
+    is_high_qos: bool | None = srm("is_high_qos", to_bool)
+    is_low_qos: bool | None = srm("is_low_qos", to_bool)
     raw: Mapping[str, Any] = raw_field()
-
-    @classmethod
-    def from_api(cls, item: Mapping[str, Any]) -> NetworkDevice | None:
-        """Build from one entry of ``devices``; ``None`` if it has no valid MAC address."""
-        mac = normalize_mac(item.get("mac"))
-        if mac is None:
-            return None
-        ipv6 = item.get("ip6_addr")
-        if isinstance(ipv6, str):
-            ipv6_addresses = tuple(a for a in ipv6.split(",") if a.strip()) if ipv6 else ()
-        elif isinstance(ipv6, list):
-            ipv6_addresses = tuple(a for a in ipv6 if isinstance(a, str) and a)
-        else:
-            ipv6_addresses = ()
-        return cls(
-            mac=mac,
-            hostname=to_str(item.get("hostname")),
-            ipv4_address=to_str(item.get("ip_addr")),
-            ipv6_addresses=tuple(a.strip() for a in ipv6_addresses),
-            online=to_bool(item.get("is_online")),
-            wireless=to_bool(item.get("is_wireless")),
-            connection=to_str(item.get("connection")),
-            band=to_str(item.get("band")),
-            ssid=to_str(item.get("wifi_ssid")),
-            signal=to_int(item.get("signalstrength")),
-            link_rate_mbps=to_int(item.get("current_rate")),
-            max_link_rate_mbps=to_int(item.get("max_rate")),
-            rate_quality=to_str(item.get("rate_quality")),
-            rx_rate_raw=to_int(item.get("transferRXRate")),
-            tx_rate_raw=to_int(item.get("transferTXRate")),
-            mesh_node_id=to_int(item.get("mesh_node_id")),
-            mesh_node_name=to_str(item.get("mesh_node_name")),
-            network=to_str(item.get("network")),
-            device_type=to_str(item.get("dev_type")),
-            guest=to_bool(item.get("is_guest")),
-            blocked=to_bool(item.get("is_baned")),
-            raw=frozen(item),
-        )
 
 
 @dataclass(frozen=True, slots=True)
-class NetworkDevices:
-    """All clients known to one SRM device."""
+class NetworkDevices(SrmModel):
+    """The answer of ``SYNO.Core.Network.NSM.Device`` ``get``."""
 
-    devices: tuple[NetworkDevice, ...]
-    truncated: bool
-    """SRM reports that its device list hit the maximum length and is incomplete."""
+    devices: tuple[NetworkDevice, ...] = srm("devices", many(NetworkDevice))
+    exceed_dev_list_max: bool | None = srm("exceed_dev_list_max", to_bool)
+    """SRM's list hit its maximum length and is incomplete."""
     raw: Mapping[str, Any] = raw_field()
-
-    @classmethod
-    def from_api(cls, data: Mapping[str, Any]) -> NetworkDevices:
-        """Build from the ``data`` member; entries without a valid MAC are skipped."""
-        items = to_list(data.get("devices"))
-        parsed = (NetworkDevice.from_api(i) for i in items if isinstance(i, Mapping))
-        return cls(
-            devices=tuple(d for d in parsed if d is not None),
-            truncated=to_bool(data.get("exceed_dev_list_max")) is True,
-            raw=frozen(data),
-        )

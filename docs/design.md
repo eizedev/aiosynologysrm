@@ -104,20 +104,30 @@ requests (`max_concurrency`, default 2) so it does not swamp the router.
 
 ## Units
 
-Fields are only given a unit in their name (`_percent`, `_kib`, `_mbps`) when it was verified
-on a router. Values whose unit is not verified yet keep SRM's number as-is and end in `_raw`.
+Field names never carry a unit, because they are SRM's keys. Where a unit was verified on a
+router, the field's docstring names it (MHz, MB, KiB, Mbit/s, seconds); where not, it says so.
 
-## Naming
+## Data model
 
-- Getters return a tuple of models. They return one object instead when the answer says something
-  about the list as a whole: `NetworkDevices.truncated`, `FirewallRules.default_policy`.
-- Addresses end in `_address`; `ipv4_address` and `ipv6_address` where both families appear, plain
-  `address` where the model already has a `family` or belongs to one. A role comes first:
-  `target_address`.
-- `interface` is SRM's interface name (`eth0`, `lbr0`). `kind` is SRM's own `type` field, which
-  would shadow a builtin; a specific classification has its own name (`device_type`).
-- Rates SRM reports without a verified unit are `rx_rate_raw` / `tx_rate_raw`; counters with a
-  verified unit say so (`bytes_received`).
-- Dates and durations are `date` and `timedelta`, not text.
-- Booleans read as statements (`online`, `linked`, `read_only`); properties derive from fields
-  (`is_root`, `used_percent`).
+The models follow [Home Assistant's guidance for API libraries](https://contributors.home-assistant.io/core/integrations/api-library/):
+"Represent the data the way the API does. Keep the names and the structure", and "A library
+represents data, it does not interpret it". In practice:
+
+- **One getter, one SRM call, one model per answer.** Nested objects and lists keep SRM's
+  structure (`DhcpClients.client_list.ipv4`, `EthPortInfo.nodes[].eth_port_info`). A getter whose
+  answer is a bare list returns a tuple (`get_external_ip()`, `get_firewall_hit_counts()`).
+- **Field names are SRM's keys in snake_case**, typos included: `transferRXRate` ->
+  `transfer_rx_rate`, `targetIP` -> `target_ip`, `is_baned` stays. A key that starts with a digit
+  moves it to the end (`1min_load` -> `load_1min`). Each field declares its key with `srm()`, and a
+  test checks the name for every model.
+- **Values keep SRM's units and formats** and are only converted to Python types: `"4"` becomes
+  `4`, `0`/`1` become booleans, but `"143:35:20"`, `"0,22,37"` and comma-separated address lists
+  stay text. Nothing is filtered out: an entry with an odd MAC address is still returned.
+- **Wrapper models carry SRM's own names**, even where they are not pretty: a getter returns the
+  whole answer, so its list sits under SRM's key (`Ipv6Prefixes.prefix`, `DhcpServers.data`,
+  `WifiRadioStatus.status_list`). A nested object SRM did not send is `None`; a missing list is
+  `()`. Check for `None` at each level (`clients.client_list.ipv4`).
+- **Keys the library does not map yet** are in each model's read-only `raw`.
+- **Everything derived lives in `aiosynologysrm.helpers`**: joins (`pair_radios`, `hits_by_rule`),
+  classifications (`address_scope`, `is_root`), parsed durations and dates, sums and percentages,
+  and `config_hash`. Each helper documents its rule, so a caller can decide whether it fits.

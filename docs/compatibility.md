@@ -6,7 +6,7 @@ This page is the single place that says what this library supports and how sure 
 
 1. **At runtime**, the client reads the router's API catalog (`SYNO.API.Info`). A call is only
    sent if the router offers the API in a version the parser understands
-   (`await client.supports(client.get_wifi_radios)` answers that for a getter, or `supports(spec)`
+   (`await client.supports(client.get_wifi_radio_status)` answers that for a getter, or `supports(spec)`
    for a single read, without sending anything). Everything else raises
    `SrmUnsupportedError`. A newer firmware that keeps an API version keeps working; one that
    drops it fails clearly instead of returning wrong data.
@@ -38,28 +38,33 @@ This page is the single place that says what this library supports and how sure 
 
 ## APIs
 
-| Helper | API | Versions understood | RT2600ac 1.3.2 |
+| Getter | API | Versions understood | RT2600ac 1.3.2 |
 |---|---|---|---|
 | `get_system_info()` | `SYNO.Core.System` `info` | 2, 1 | v2 |
 | `get_utilization()` | `SYNO.Core.System.Utilization` `get` | 1 | v1 |
 | `get_network_devices()` | `SYNO.Core.Network.NSM.Device` `get` | 5 | v5 |
-| `get_operating_mode()` | `SYNO.Core.Network.Router.Topology` `get` | 4 | v4 |
-| `get_wan_status()` | `SYNO.Core.Network.Router.ConnectionStatus` `get` | 1 | v1 |
-| `get_external_addresses()` | `SYNO.Core.DDNS.ExtIP` `list` | 1 | v1 |
+| `get_topology()` | `SYNO.Core.Network.Router.Topology` `get` | 4 | v4 |
+| `get_connection_status()` | `SYNO.Core.Network.Router.ConnectionStatus` `get` | 1 | v1 |
+| `get_external_ip()` | `SYNO.Core.DDNS.ExtIP` `list` | 1 | v1 |
 | `get_ipv6_prefixes()` | `SYNO.Core.Network.IPv6.Router.Prefix` `list` | 1 | v1 |
 | `get_dhcp_servers()` | `SYNO.Core.Network.DHCPServer` `get` | 1 | v1 |
-| `get_dhcp_leases()` | `SYNO.Core.Network.DHCPServer.ClientList` `list` (`ifname=all`) | 2 | v2 |
+| `get_dhcp_clients()` | `SYNO.Core.Network.DHCPServer.ClientList` `list` (`ifname=all`) | 2 | v2 |
 | `get_dhcp_reservations()` | `SYNO.Core.Network.DHCPServer.Reservation` `get` | 2 | v2 |
-| `get_firewall_rules()` | `SYNO.Core.Security.Firewall.Rules` `get` + `Rules.HitCount` `get` | 2 / 1 | v2 / v1 |
+| `get_firewall_rules()` | `SYNO.Core.Security.Firewall.Rules` `get` | 2 | v2 |
+| `get_firewall_hit_counts()` | `SYNO.Core.Security.Firewall.Rules.HitCount` `get` | 1 | v1 |
 | `get_forward_rules()` | `SYNO.Core.Security.Firewall.Forward.Rules` `get` | 1 | v1 |
 | `get_port_forwards()` | `SYNO.Core.Network.Router.PortForward` `get` (`additional={"upnp":true}`) | 1 | v1 |
 | `get_port_triggers()` | `SYNO.Core.Network.Router.PortTrigger` `list` | 1 | v1 |
-| `get_wifi_radios()` | `SYNO.Wifi.Radio.Setting` + `SYNO.Wifi.Radio.Status` `get` | 1 | v1 |
-| `get_wifi_clients()` | `SYNO.Wifi.Device` `get` | 1 | v1 |
-| `get_ethernet_ports()` | `SYNO.Mesh.Network.EthPortInfo` `get` | 1 | v1 |
+| `get_allow_srm_from_wan()` | `SYNO.Core.Security.Firewall.AllowSrmFromWan` `get` | 1 | v1 |
+| `get_firewall_conf()` | `SYNO.Core.Security.Firewall.Conf` `get` | 1 | v1 |
+| `get_forward_conf()` | `SYNO.Core.Security.Firewall.Forward.Conf` `get` | 1 | v1 |
+| `get_auto_block()` | `SYNO.Core.Security.AutoBlock` `get` | 1 | v1 |
+| `get_wifi_radio_settings()` | `SYNO.Wifi.Radio.Setting` `get` | 1 | v1 |
+| `get_wifi_radio_status()` | `SYNO.Wifi.Radio.Status` `get` | 1 | v1 |
+| `get_wifi_devices()` | `SYNO.Wifi.Device` `get` | 1 | v1 |
+| `get_eth_port_info()` | `SYNO.Mesh.Network.EthPortInfo` `get` | 1 | v1 |
 | `get_mesh_nodes()` | `SYNO.Mesh.Node.List` `get` | 4 | v4 |
 | `get_usb_volumes()` | `SYNO.Core.Storage.Volume` `list` (`limit=-1&offset=0&location=external`) | 1 | v1 |
-| `get_security_settings()` | `Firewall.AllowSrmFromWan`, `Firewall.Conf`, `Firewall.Forward.Conf`, `Security.AutoBlock` (`get`) | 1 | v1 |
 
 For the RT6600ax there is outside evidence: the Home Assistant integration
 [synology-srm-extended](https://github.com/Vachler/synology-srm-extended) reads the same device
@@ -70,22 +75,22 @@ behaves like the tested models; fixtures from it would make that certain
 
 ## Where values come from
 
-- `get_external_addresses()` does not look anything up. SRM returns what a background service
+- `get_external_ip()` does not look anything up. SRM returns what a background service
   stored: on a router with DDNS the DDNS updater (it asks `checkip.synology.com`); on a standalone
   access point without DDNS the value was present as well, written by a service not identified
   yet. The values can be out of date or missing. This was measured on one network only
   ([#13](https://github.com/eizedev/aiosynologysrm/issues/13)).
-- `get_wan_status()` reports the address of the WAN interface itself, read live. It is the public
+- `get_connection_status()` reports the address of the WAN interface itself, read live. It is the public
   address only when the router dials in itself (PPPoE, or a modem in bridge mode); behind another
   router it is a private address, and on a line with carrier-grade NAT an address from
-  100.64.0.0/10 (seen on a fibre line). `WanConnection.address_scope` tells these apart. Use
-  `get_wan_status()` for the connection itself and `get_external_addresses()` for the address the
+  100.64.0.0/10 (seen on a fibre line). `helpers.address_scope()` tells these apart. Use
+  `get_connection_status()` for the connection itself and `get_external_ip()` for the address the
   internet sees; on a standalone access point only the latter means anything.
 
 ## Operating modes
 
 SRM devices run as **router**, as **mesh point** of a router, or as **standalone access point**.
-`get_operating_mode()` tells which one a device is (`router` or `bridge`). The mode matters:
+`get_topology()` tells which one a device is (`net_topology` `router` or `bridge`). The mode matters:
 
 - A **standalone access point** (`bridge`) still answers the WAN and DHCP calls, but its "WAN" is
   its own uplink, and its DHCP settings are left over from router mode and not in use. Its lease

@@ -33,7 +33,9 @@ jobs:
       # setup-uv's default cache setting ("auto") leaves the cache off for tag pushes, so a
       # release never builds from a cache another workflow wrote.
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
-      - run: uv build
+      # Build requirements pinned with hashes, so a release never builds with a version that was
+      # published minutes ago. Refresh: see CONTRIBUTING.md, Releases.
+      - run: uv build --build-constraints build-constraints.txt --require-hashes
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dist

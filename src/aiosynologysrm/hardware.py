@@ -1,248 +1,190 @@
-"""Typed views of Wi-Fi radios, Wi-Fi clients, Ethernet ports, mesh nodes and USB storage."""
+"""Typed views of SRM answers: Wi-Fi radios and clients, Ethernet ports, mesh nodes, USB storage.
+
+Same rules as :mod:`aiosynologysrm.models`: SRM's keys and structure, Python types, the object in
+a read-only ``raw``.
+"""
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import timedelta
 from typing import Any
 
-from ._parse import (
-    frozen,
-    normalize_mac,
-    raw_field,
-    to_bool,
-    to_int,
-    to_list,
-    to_mapping,
-    to_str,
-    to_timedelta,
-)
+from ._parse import SrmModel, many, one, raw_field, srm, to_bool, to_int, to_str
 
 
 @dataclass(frozen=True, slots=True)
-class WifiRadio:
-    """One Wi-Fi radio, combining its settings and its live state.
+class WifiRadioSetting(SrmModel):
+    """Configuration of one radio. ``channel`` is ``0`` when the router picks it itself."""
 
-    ``configured_channel`` is ``0`` when the router picks the channel itself; ``channel`` is the
-    one in use. ``radio_type`` is SRM's band name, for example ``2.4G``, ``5G`` or ``5G-2``.
+    radio_type: str | None = srm("radio_type", to_str)
+    """SRM's band name, for example ``2.4G``, ``5G`` or ``5G-2``."""
+    channel: int | None = srm("channel", to_int)
+    channel2: int | None = srm("channel2", to_int)
+    channel_width: str | None = srm("channel_width", to_str)
+    """Allowed widths in MHz, for example ``20_40_80``."""
+    transmit_power: str | None = srm("transmit_power", to_str)
+    wireless_mode: str | None = srm("wireless_mode", to_str)
+    allow_auto_switch_dfs: bool | None = srm("allow_auto_switch_dfs", to_bool)
+    raw: Mapping[str, Any] = raw_field()
+
+
+@dataclass(frozen=True, slots=True)
+class WifiRadioSettings(SrmModel):
+    """The answer of ``SYNO.Wifi.Radio.Setting`` ``get``."""
+
+    radio_list: tuple[WifiRadioSetting, ...] = srm("radio_list", many(WifiRadioSetting))
+    raw: Mapping[str, Any] = raw_field()
+
+
+@dataclass(frozen=True, slots=True)
+class WifiRadioState(SrmModel):
+    """Live state of one radio: the channel in use and its BSSID."""
+
+    radio_type: str | None = srm("radio_type", to_str)
+    channel: int | None = srm("channel", to_int)
+    bssid: str | None = srm("bssid", to_str)
+    raw: Mapping[str, Any] = raw_field()
+
+
+@dataclass(frozen=True, slots=True)
+class WifiRadioStatus(SrmModel):
+    """The answer of ``SYNO.Wifi.Radio.Status`` ``get``."""
+
+    status_list: tuple[WifiRadioState, ...] = srm("status_list", many(WifiRadioState))
+    raw: Mapping[str, Any] = raw_field()
+
+
+@dataclass(frozen=True, slots=True)
+class WifiDevice(SrmModel):
+    """A client on this device's own Wi-Fi (``SYNO.Wifi.Device`` ``get``).
+
+    Only this device's radios are listed. ``signal`` is 0-100, rates in Mbit/s,
+    ``associate_up_time`` in seconds, byte counters since the client connected.
     """
 
-    radio_type: str
-    channel: int | None
-    configured_channel: int | None
-    channel_width: str | None
-    """SRM's allowed widths in MHz, for example ``20_40_80``."""
-    transmit_power: str | None
-    wireless_mode: str | None
-    auto_switch_dfs: bool | None
-    bssid: str | None
+    mac_address: str | None = srm("mac_address", to_str)
+    radio_type: str | None = srm("radio_type", to_str)
+    interface_name: str | None = srm("interface_name", to_str)
+    network_id: int | None = srm("network_id", to_int)
+    signal: int | None = srm("signal", to_int)
+    current_rate: int | None = srm("current_rate", to_int)
+    maximum_rate: int | None = srm("maximum_rate", to_int)
+    associate_up_time: int | None = srm("associate_up_time", to_int)
+    bytes_rx: int | None = srm("bytes_rx", to_int)
+    bytes_tx: int | None = srm("bytes_tx", to_int)
     raw: Mapping[str, Any] = raw_field()
-    """``{"setting": ..., "status": ...}``: the radio's entries from both answers."""
-
-    @property
-    def automatic_channel(self) -> bool:
-        """Whether the router chooses the channel itself."""
-        return self.configured_channel == 0
-
-    @classmethod
-    def list_from_api(
-        cls, settings: Mapping[str, Any], status: Mapping[str, Any]
-    ) -> tuple[WifiRadio, ...]:
-        """Join ``Wifi.Radio.Setting`` and ``Wifi.Radio.Status`` by radio type."""
-        live = {
-            to_str(item.get("radio_type")): item
-            for item in to_list(status.get("status_list"))
-            if isinstance(item, Mapping)
-        }
-        out = []
-        for item in to_list(settings.get("radio_list")):
-            if not isinstance(item, Mapping) or not to_str(item.get("radio_type")):
-                continue
-            radio = item["radio_type"]
-            state = to_mapping(live.get(radio))
-            out.append(
-                cls(
-                    radio_type=radio,
-                    channel=to_int(state.get("channel")),
-                    configured_channel=to_int(item.get("channel")),
-                    channel_width=to_str(item.get("channel_width")),
-                    transmit_power=to_str(item.get("transmit_power")),
-                    wireless_mode=to_str(item.get("wireless_mode")),
-                    auto_switch_dfs=to_bool(item.get("allow_auto_switch_dfs")),
-                    bssid=normalize_mac(state.get("bssid")),
-                    raw=frozen({"setting": item, "status": state}),
-                )
-            )
-        return tuple(out)
 
 
 @dataclass(frozen=True, slots=True)
-class WifiClient:
-    """Radio statistics of a client connected to this device's Wi-Fi (``Wifi.Device`` ``get``).
+class WifiDevices(SrmModel):
+    """The answer of ``SYNO.Wifi.Device`` ``get``."""
 
-    Only this device's own radios are listed. Join with :class:`NetworkDevice` by ``mac``.
+    device_list: tuple[WifiDevice, ...] = srm("device_list", many(WifiDevice))
+    raw: Mapping[str, Any] = raw_field()
+
+
+@dataclass(frozen=True, slots=True)
+class EthPort(SrmModel):
+    """Link state of one Ethernet port: ``wp1`` is the WAN port, ``lp1``... the LAN ports.
+
+    ``link_speed`` is Mbit/s, ``0`` without a link.
     """
 
-    mac: str
-    radio_type: str | None
-    interface: str | None
-    signal: int | None
-    """SRM's signal quality, 0-100."""
-    link_rate_mbps: int | None
-    max_link_rate_mbps: int | None
-    connected_for: timedelta | None
-    bytes_received: int | None
-    bytes_sent: int | None
-    """Counters since the client connected, as seen by the router."""
+    port: str | None = srm("port", to_str)
+    has_link: bool | None = srm("has_link", to_bool)
+    link_speed: int | None = srm("link_speed", to_int)
     raw: Mapping[str, Any] = raw_field()
-
-    @classmethod
-    def list_from_api(cls, data: Mapping[str, Any]) -> tuple[WifiClient, ...]:
-        """Build from the ``data`` member; entries without a valid MAC are skipped."""
-        out = []
-        for item in to_list(data.get("device_list")):
-            mac = normalize_mac(item.get("mac_address")) if isinstance(item, Mapping) else None
-            if mac is None:
-                continue
-            uptime = to_int(item.get("associate_up_time"))
-            out.append(
-                cls(
-                    mac=mac,
-                    radio_type=to_str(item.get("radio_type")),
-                    interface=to_str(item.get("interface_name")),
-                    signal=to_int(item.get("signal")),
-                    link_rate_mbps=to_int(item.get("current_rate")),
-                    max_link_rate_mbps=to_int(item.get("maximum_rate")),
-                    connected_for=to_timedelta(seconds=uptime),
-                    bytes_received=to_int(item.get("bytes_rx")),
-                    bytes_sent=to_int(item.get("bytes_tx")),
-                    raw=frozen(item),
-                )
-            )
-        return tuple(out)
 
 
 @dataclass(frozen=True, slots=True)
-class EthernetPort:
-    """Link state of one Ethernet port (``Mesh.Network.EthPortInfo`` ``get``).
+class EthPortNode(SrmModel):
+    """The Ethernet ports of one node."""
 
-    Port names follow SRM: ``wp1`` is the WAN port, ``lp1``... the LAN ports.
+    node_id: int | None = srm("node_id", to_int)
+    name: str | None = srm("name", to_str)
+    unique: str | None = srm("unique", to_str)
+    eth_port_info: tuple[EthPort, ...] = srm("eth_port_info", many(EthPort))
+    raw: Mapping[str, Any] = raw_field()
+
+
+@dataclass(frozen=True, slots=True)
+class EthPortInfo(SrmModel):
+    """The answer of ``SYNO.Mesh.Network.EthPortInfo`` ``get``."""
+
+    nodes: tuple[EthPortNode, ...] = srm("nodes", many(EthPortNode))
+    raw: Mapping[str, Any] = raw_field()
+
+
+@dataclass(frozen=True, slots=True)
+class MeshNodeCapability(SrmModel):
+    """What a node supports."""
+
+    support_custom_topology: bool | None = srm("support_custom_topology", to_bool)
+    support_force_ethernet: bool | None = srm("support_force_ethernet", to_bool)
+    raw: Mapping[str, Any] = raw_field()
+
+
+@dataclass(frozen=True, slots=True)
+class MeshNode(SrmModel):
+    """A router or mesh point. A standalone device lists only itself, as node ``0``.
+
+    ``parent_node_id`` is ``-1`` for the main router. Rates are SRM's numbers, unit not verified.
     """
 
-    node_id: int | None
-    node_name: str | None
-    port: str
-    linked: bool | None
-    speed_mbps: int | None
-    """``0`` when there is no link."""
+    node_id: int | None = srm("node_id", to_int)
+    name: str | None = srm("name", to_str)
+    parent_node_id: int | None = srm("parent_node_id", to_int)
+    network_status: str | None = srm("network_status", to_str)
+    """``online`` when reachable."""
+    node_status: str | None = srm("node_status", to_str)
+    node_status_msg: str | None = srm("node_status_msg", to_str)
+    is_wireless: bool | None = srm("is_wireless", to_bool)
+    """The node's uplink is Wi-Fi."""
+    is_dual_band: bool | None = srm("is_dual_band", to_bool)
+    band: str | None = srm("band", to_str)
+    signalstrength: int | None = srm("signalstrength", to_int)
+    connected_devices: int | None = srm("connected_devices", to_int)
+    current_rate_rx: int | None = srm("current_rate_rx", to_int)
+    current_rate_tx: int | None = srm("current_rate_tx", to_int)
+    led_mode: str | None = srm("led_mode", to_str)
+    blinking: bool | None = srm("blinking", to_bool)
+    custom_topology_mode: str | None = srm("custom_topology_mode", to_str)
+    capability: MeshNodeCapability | None = srm("capability", one(MeshNodeCapability))
     raw: Mapping[str, Any] = raw_field()
-    """The port's entry; the node it belongs to is not included."""
-
-    @classmethod
-    def list_from_api(cls, data: Mapping[str, Any]) -> tuple[EthernetPort, ...]:
-        """Build the ports of every node in the answer."""
-        return tuple(
-            cls(
-                node_id=to_int(node.get("node_id")),
-                node_name=to_str(node.get("name")),
-                port=port["port"],
-                linked=to_bool(port.get("has_link")),
-                speed_mbps=to_int(port.get("link_speed")),
-                raw=frozen(port),
-            )
-            for node in to_list(data.get("nodes"))
-            if isinstance(node, Mapping)
-            for port in to_list(node.get("eth_port_info"))
-            if isinstance(port, Mapping) and to_str(port.get("port"))
-        )
 
 
 @dataclass(frozen=True, slots=True)
-class MeshNode:
-    """A router or mesh point (``Mesh.Node.List`` ``get``).
+class MeshNodes(SrmModel):
+    """The answer of ``SYNO.Mesh.Node.List`` ``get``."""
 
-    A standalone device lists only itself, as node ``0``. Mesh points name their uplink in
-    ``parent_node_id`` (``-1`` for the main router).
-    """
-
-    node_id: int
-    name: str | None
-    model: str | None
-    online: bool | None
-    status: str | None
-    """SRM's assessment, for example ``good``."""
-    parent_node_id: int | None
-    wireless_backhaul: bool | None
-    connected_devices: int | None
-    rx_rate_raw: int | None
-    tx_rate_raw: int | None
+    nodes: tuple[MeshNode, ...] = srm("nodes", many(MeshNode))
+    total: int | None = srm("total", to_int)
     raw: Mapping[str, Any] = raw_field()
-
-    @property
-    def is_root(self) -> bool:
-        """Whether this node is at the top: the main router of a mesh, or a standalone device."""
-        return self.parent_node_id == -1
-
-    @classmethod
-    def list_from_api(cls, data: Mapping[str, Any]) -> tuple[MeshNode, ...]:
-        """Build from the ``data`` member; nodes without an id are skipped."""
-        out = []
-        for item in to_list(data.get("nodes")):
-            node_id = to_int(item.get("node_id")) if isinstance(item, Mapping) else None
-            if node_id is None:
-                continue
-            network = to_str(item.get("network_status"))
-            out.append(
-                cls(
-                    node_id=node_id,
-                    name=to_str(item.get("name")),
-                    model=to_str(item.get("model")),
-                    online=None if network is None else network == "online",
-                    status=to_str(item.get("node_status")),
-                    parent_node_id=to_int(item.get("parent_node_id")),
-                    wireless_backhaul=to_bool(item.get("is_wireless")),
-                    connected_devices=to_int(item.get("connected_devices")),
-                    rx_rate_raw=to_int(item.get("current_rate_rx")),
-                    tx_rate_raw=to_int(item.get("current_rate_tx")),
-                    raw=frozen(item),
-                )
-            )
-        return tuple(out)
 
 
 @dataclass(frozen=True, slots=True)
-class UsbVolume:
-    """A volume on USB storage attached to the router (``Core.Storage.Volume`` ``list``)."""
+class StorageVolume(SrmModel):
+    """A volume on USB storage attached to the router. Sizes in bytes."""
 
-    name: str | None
-    path: str | None
-    file_system: str | None
-    total_bytes: int | None
-    free_bytes: int | None
-    read_only: bool | None
+    display_name: str | None = srm("display_name", to_str)
+    volume_path: str | None = srm("volume_path", to_str)
+    fs_type: str | None = srm("fs_type", to_str)
+    size_total_byte: int | None = srm("size_total_byte", to_int)
+    size_free_byte: int | None = srm("size_free_byte", to_int)
+    readonly: bool | None = srm("readonly", to_bool)
+    container: str | None = srm("container", to_str)
+    location: str | None = srm("location", to_str)
+    raid_type: str | None = srm("raid_type", to_str)
+    single_volume: bool | None = srm("single_volume", to_bool)
     raw: Mapping[str, Any] = raw_field()
 
-    @property
-    def used_percent(self) -> float | None:
-        """Share of the volume in use, ``None`` if a size is unknown."""
-        if not self.total_bytes or self.free_bytes is None:
-            return None
-        return round(100 * (self.total_bytes - self.free_bytes) / self.total_bytes, 1)
 
-    @classmethod
-    def list_from_api(cls, data: Mapping[str, Any]) -> tuple[UsbVolume, ...]:
-        """Build from the ``data`` member."""
-        return tuple(
-            cls(
-                name=to_str(item.get("display_name")),
-                path=to_str(item.get("volume_path")),
-                file_system=to_str(item.get("fs_type")),
-                total_bytes=to_int(item.get("size_total_byte")),
-                free_bytes=to_int(item.get("size_free_byte")),
-                read_only=to_bool(item.get("readonly")),
-                raw=frozen(item),
-            )
-            for item in to_list(data.get("volumes"))
-            if isinstance(item, Mapping)
-        )
+@dataclass(frozen=True, slots=True)
+class StorageVolumes(SrmModel):
+    """The answer of ``SYNO.Core.Storage.Volume`` ``list`` for external storage."""
+
+    volumes: tuple[StorageVolume, ...] = srm("volumes", many(StorageVolume))
+    total: int | None = srm("total", to_int)
+    offset: int | None = srm("offset", to_int)
+    raw: Mapping[str, Any] = raw_field()

@@ -60,6 +60,13 @@ class SrmBlockedError(SrmAuthenticationError):
     """
 
 
+class SrmSessionError(SrmApiError):
+    """The router ended the session again right after a new login; the credentials are fine.
+
+    Usually temporary (the router restarted, or another client ended the session); retry later.
+    """
+
+
 class SrmPermissionError(SrmApiError):
     """The account is logged in but may not use this API (SRM needs an admin account)."""
 

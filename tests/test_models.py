@@ -1,108 +1,154 @@
-"""Parsing of real (anonymized) responses and of odd input."""
+"""Every model mirrors SRM: fields are named after SRM's keys; raw is read-only, out of eq/hash."""
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+import dataclasses
+import inspect
+import typing
+from collections.abc import Callable, Iterator
+from typing import Any
 
 import pytest
 
-from aiosynologysrm import NetworkDevice, NetworkDevices, SystemInfo, Utilization, normalize_mac
+import aiosynologysrm
+from aiosynologysrm import NetworkDevice, SrmClient, SystemInfo, Utilization
+from aiosynologysrm._parse import SrmModel, snake
 
-from .conftest import RT2600AC, load
+from .conftest import MR2200AC, FakeSrm, responses
+
+MakeClient = Callable[..., SrmClient]
+MODELS = [
+    cls
+    for _, cls in inspect.getmembers(aiosynologysrm, inspect.isclass)
+    if issubclass(cls, SrmModel)
+]
 
 
-def test_system_info_rt2600ac() -> None:
-    info = SystemInfo.from_api(load(RT2600AC / "system_info.json"))
+def _models(value: Any) -> Iterator[Any]:
+    """The value and every model nested in it."""
+    if isinstance(value, tuple):
+        for item in value:
+            yield from _models(item)
+    elif dataclasses.is_dataclass(value):
+        yield value
+        for f in dataclasses.fields(value):
+            yield from _models(getattr(value, f.name))
+
+
+async def _everything(client: SrmClient) -> list[Any]:
+    from aiosynologysrm.client import _GETTER_READS  # noqa: PLC0415 - private on purpose
+
+    found: list[Any] = []
+    for name in _GETTER_READS:
+        found.extend(_models(await getattr(client, name)()))
+    return found
+
+
+@pytest.mark.parametrize("model", MODELS, ids=lambda c: c.__name__)
+def test_fields_are_named_after_srm_keys(model: type) -> None:
+    for f in dataclasses.fields(model):
+        if f.name == "raw":
+            assert not f.compare
+            assert f.hash is False
+            assert not f.repr
+            continue
+        assert "srm" in f.metadata, f"{model.__name__}.{f.name} does not name its SRM key"
+        assert f.name == snake(f.metadata["srm"]), f"{model.__name__}.{f.name}"
+
+
+@pytest.mark.parametrize("model", MODELS, ids=lambda c: c.__name__)
+def test_field_types_match_their_converters(model: type) -> None:
+    hints = typing.get_type_hints(model)
+    for f in dataclasses.fields(model):
+        if f.name == "raw":
+            continue
+        convert = f.metadata["convert"]
+        nested = getattr(convert, "model", None)
+        if nested is None:
+            expected = typing.get_type_hints(convert)["return"]
+        elif getattr(convert, "is_list", False):
+            expected = tuple[nested, ...]  # type: ignore[valid-type]
+        else:
+            expected = nested | None
+        assert hints[f.name] == expected, f"{model.__name__}.{f.name}"
+
+
+def test_snake_case_rule() -> None:
+    assert snake("transferRXRate") == "transfer_rx_rate"
+    assert snake("targetIP") == "target_ip"
+    assert snake("15min_load") == "load_15min"
+    assert snake("is_baned") == "is_baned"
+
+
+@pytest.mark.parametrize("folder", ["router", "access point"])
+async def test_every_answer_parses_with_read_only_raw(
+    fake: FakeSrm, make_client: MakeClient, folder: str
+) -> None:
+    if folder == "access point":
+        fake.responses = responses(MR2200AC)
+    models = await _everything(make_client())
+    for model in models:
+        assert isinstance(model.raw, type(SystemInfo().raw))
+        with pytest.raises(TypeError):
+            model.raw["new"] = 1  # type: ignore[index]
+        hash(model)
+
+
+async def test_most_models_appear_in_the_router_answers(make_client: MakeClient) -> None:
+    found = {type(m) for m in await _everything(make_client())}
+    # The recorded router has no port triggers.
+    assert set(MODELS) - found == {aiosynologysrm.PortTrigger}
+
+
+def test_raw_does_not_affect_equality_and_is_a_copy() -> None:
+    payload = {"ip": "192.0.2.1", "seen": 1}
+    a = aiosynologysrm.ExternalIp.from_api(payload)
+    b = aiosynologysrm.ExternalIp.from_api({"ip": "192.0.2.1", "seen": 2})
+    assert a == b
+    assert hash(a) == hash(b)
+    assert "seen" not in repr(a)
+    payload["ip"] = "192.0.2.2"
+    assert a.raw["ip"] == "192.0.2.1"
+
+
+async def test_system_info(make_client: MakeClient) -> None:
+    info = await make_client().get_system_info()
     assert info.model == "RT2600ac"
-    assert info.firmware_version == "SRM 1.3.2-9366 Update 3"
-    assert info.cpu_cores == 2
-    assert info.ram_mb == 512
-    assert info.uptime == timedelta(hours=143, minutes=35, seconds=20)
+    assert info.firmware_ver == "SRM 1.3.2-9366 Update 3"
+    assert info.cpu_cores == 2  # SRM sends "2" as text
+    assert info.ram_size == 512
+    assert info.up_time == "143:35:20"
+    assert info.serial == "XXXXXXXX"  # anonymized
+    assert info.usb_dev[0].cls == "disk"
 
 
-def test_utilization_rt2600ac() -> None:
-    util = Utilization.from_api(load(RT2600AC / "utilization.json"))
-    assert util.cpu_total_percent == 35
-    assert util.memory_total_kib is not None
-    assert util.memory_total_kib > 0
-    assert "total" in {i.interface for i in util.interfaces}
+async def test_utilization(make_client: MakeClient) -> None:
+    util = await make_client().get_utilization()
+    assert util.cpu is not None
+    assert util.cpu.load_1min is not None
+    assert util.memory is not None
+    assert util.memory.total_real
+    assert "total" in {n.device for n in util.network}
 
 
-def test_network_devices_rt2600ac() -> None:
-    devices = NetworkDevices.from_api(load(RT2600AC / "network_devices.json"))
+async def test_network_devices(make_client: MakeClient) -> None:
+    devices = await make_client().get_network_devices()
     assert len(devices.devices) == 70
-    assert not devices.truncated
-    online = [d for d in devices.devices if d.online]
-    assert len(online) == 32
-    wifi = next(d for d in devices.devices if d.connection == "wifi")
-    assert wifi.wireless is True
+    assert devices.exceed_dev_list_max is False
+    assert sum(1 for d in devices.devices if d.is_online) == 32
+    wifi = next(d for d in devices.devices if d.is_wireless and d.is_online)
     assert wifi.band is not None
-    assert wifi.signal is not None
-    assert all(d.mac.startswith("02:00:00:00") for d in devices.devices)
+    assert wifi.signalstrength is not None
+    assert all(d.mac and d.mac.startswith("02:00:00:00") for d in devices.devices)
 
 
-def test_empty_and_odd_input() -> None:
+def test_odd_input_becomes_none() -> None:
     assert SystemInfo.from_api({}).model is None
-    assert SystemInfo.from_api({"up_time": "1:2"}).uptime is None
-    assert SystemInfo.from_api({"cpu_cores": True}).cpu_cores is None
-    util = Utilization.from_api({"cpu": "busy", "network": [{"rx": 1}, "x"]})
-    assert util.cpu_total_percent is None
-    assert util.interfaces == ()
-    assert NetworkDevices.from_api({"devices": "none"}).devices == ()
-
-
-def test_device_without_mac_is_skipped() -> None:
-    data = {"devices": [{"mac": "nope"}, {"mac": "AA-BB-CC-DD-EE-FF", "is_online": 1}, 5]}
-    devices = NetworkDevices.from_api(data)
-    assert [d.mac for d in devices.devices] == ["aa:bb:cc:dd:ee:ff"]
-    assert devices.devices[0].online is True
-
-
-@pytest.mark.parametrize(
-    ("value", "expected"),
-    [
-        ("AA:BB:CC:DD:EE:FF", "aa:bb:cc:dd:ee:ff"),
-        ("aabbccddeeff", "aa:bb:cc:dd:ee:ff"),
-        ("aa-bb-cc-dd-ee-ff", "aa:bb:cc:dd:ee:ff"),
-        ("aa:bb:cc:dd:ee", None),
-        ("aa:bb-cc:dd-ee:ff", None),  # mixed separators
-        (None, None),
-    ],
-)
-def test_normalize_mac(value: object, expected: str | None) -> None:
-    assert normalize_mac(value) == expected
-
-
-@pytest.mark.parametrize(
-    ("ipv6", "expected"),
-    [
-        ("2001:db8::1, 2001:db8::2", ("2001:db8::1", "2001:db8::2")),
-        ("", ()),
-        (["2001:db8::1", 3, ""], ("2001:db8::1",)),
-        (None, ()),
-    ],
-)
-def test_ipv6_forms(ipv6: object, expected: tuple[str, ...]) -> None:
-    device = NetworkDevice.from_api({"mac": "02:00:00:00:00:01", "ip6_addr": ipv6})
-    assert device is not None
-    assert device.ipv6_addresses == expected
-
-
-@pytest.mark.parametrize(
-    ("value", "expected"),
-    [("1", 1), ("-3", -3), ("x", None), (2.5, None)],
-)
-def test_integer_fields(value: object, expected: int | None) -> None:
-    assert SystemInfo.from_api({"ram_size": value}).ram_mb == expected
-
-
-@pytest.mark.parametrize(("value", "expected"), [("true", True), (0, False), ("yes", None)])
-def test_boolean_fields(value: object, expected: bool | None) -> None:
-    device = NetworkDevice.from_api({"mac": "02:00:00:00:00:01", "is_guest": value})
-    assert device is not None
-    assert device.guest is expected
-
-
-def test_firmware_date() -> None:
-    assert SystemInfo.from_api({"firmware_date": "2026/09/11"}).firmware_date == date(2026, 9, 11)
-    assert SystemInfo.from_api({"firmware_date": "11.09.2026"}).firmware_date is None
+    assert SystemInfo.from_api("nope").model is None
+    assert SystemInfo.from_api({"cpu_cores": True, "ram_size": "x"}).cpu_cores is None
+    assert Utilization.from_api({"cpu": 3, "network": "x"}).cpu is None
+    assert Utilization.from_api({"network": [1, {"device": "eth0"}]}).network[0].device == "eth0"
+    device = NetworkDevice.from_api({"mac": "nope", "is_guest": "1", "transferRXRate": "7"})
+    assert device.mac == "nope"  # kept as SRM sent it; normalize_mac() checks it
+    assert device.is_guest is True
+    assert device.transfer_rx_rate == 7

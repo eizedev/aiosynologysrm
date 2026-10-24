@@ -6,6 +6,76 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-24
+
+### Changed
+
+- **Breaking: the models mirror SRM's answers**, following Home Assistant's guidance for API
+  libraries ("keep the names and the structure", "represent data, do not interpret it"). Every
+  getter sends one SRM call and returns one model per answer; field names are SRM's keys in
+  snake_case (`ip_addr`, `is_online`, `transfer_rx_rate`, `net_topology`, `is_baned`); values keep
+  SRM's units and formats. Renamed getters: `get_topology`, `get_connection_status`,
+  `get_external_ip`, `get_dhcp_clients`, `get_wifi_devices`, `get_eth_port_info`. Split getters:
+  `get_firewall_hit_counts`, `get_wifi_radio_settings` / `get_wifi_radio_status`,
+  `get_allow_srm_from_wan`, `get_firewall_conf`, `get_forward_conf`, `get_auto_block`.
+- **Breaking:** derived values moved to `aiosynologysrm.helpers`: `address_scope`, `hits_by_rule`,
+  `pair_radios`, `up_time`, `firmware_date`, `lease_remaining`, `split_addresses`,
+  `cpu_total_percent`, `used_percent`, `is_root`, `normalize_mac`, and `config_hash` (was
+  `fingerprint()` and the `fingerprint` properties).
+- `address_scope()` returns `None` for `0.0.0.0` and `::`, and `other` for documentation,
+  benchmarking and loopback ranges instead of `private`.
+- Two session errors in a row raise the new `SrmSessionError` instead of
+  `SrmAuthenticationError`, so callers do not ask for new credentials that are fine.
+- `ssl=True` is documented as what it is: aiohttp's default, which follows the session's own
+  certificate setting.
+- Diagnostics: a failing call no longer ends the report; keys the library does not map are only
+  counted, never named; the certificate question goes to stderr; a malformed `--fingerprint` is a
+  clear error.
+- The anonymizer also checks keys for leaks, refuses unknown container keys, values without a key
+  and text in address fields, and replaces rare device types and the recording's clock; fixtures
+  regenerated and renamed after the getters.
+- Releases build with pinned, hash-checked build requirements (`build-constraints.txt`); coverage
+  must stay at 100 %.
+
+### Removed
+
+These names are gone; use the replacement on the right.
+
+| 0.4 | 0.5 |
+| --- | --- |
+| `get_operating_mode()` -> `OperatingMode` (`mode`, `supported_modes`, `is_router`) | `get_topology()` -> `Topology` (`net_topology`, `supported_mode`) |
+| `get_wan_status()` -> `WanStatus` / `WanConnection` (`status`, `interface`, `address`, `address_scope`) | `get_connection_status()` -> `ConnectionStatus` / `ConnectionStatusEntry` (`conn_status`, `ifname`, `ip`); `helpers.address_scope(entry.ip)` |
+| `get_external_addresses()` -> `ExternalAddress` (`ipv4_address`, `ipv6_address`, `kind`) | `get_external_ip()` -> `ExternalIp` (`ip`, `ipv6`, `type`) |
+| `get_dhcp_leases()` -> `DhcpLease` (`family`, `address`, `client_id`, `permanent`, `expires_in`, `mac`) | `get_dhcp_clients()` -> `DhcpClients.client_list.ipv4/ipv6` -> `DhcpClient` (`ip`, `clid`, `expire`); `helpers.lease_remaining`, `helpers.normalize_mac` |
+| `get_dhcp_reservations()` -> tuple of `DhcpReservation` (`family`, `address`, `client_id`) | `get_dhcp_reservations()` -> `DhcpReservations.reservation_list.ipv4/ipv6` (`ip`, `clid`) |
+| `get_dhcp_servers()` -> `DhcpServer` / `DhcpPool` | `get_dhcp_servers()` -> `DhcpServers.data` -> `DhcpServer` (`ifname`, `ipv4: DhcpServerIpv4`, `ipv6: DhcpServerIpv6`) |
+| `get_ipv6_prefixes()` -> tuple (`lan_interface`, `valid_lifetime`) | `get_ipv6_prefixes()` -> `Ipv6Prefixes.prefix` (`lan`, `wan`, `valid_lft`, `preferred_lft`) |
+| `get_firewall_rules()` -> `FirewallRules` with `hits`, `fingerprint`, `Endpoint` | `get_firewall_rules()` -> `FirewallRules` (`default_policy`, `rules` with flat `src_*`/`dst_*`); `get_firewall_hit_counts()` + `helpers.hits_by_rule`; `helpers.config_hash` |
+| `get_forward_rules()`, `get_port_forwards()`, `get_port_triggers()` -> tuples | `ForwardRules.rules`, `PortForwards.rules` (`source_port`, `target_ip`, `target_port`, `type`), `PortTriggers.configs` (`mport`, `rport`, `ipaddr`) |
+| `get_security_settings()` -> `SecuritySettings` | `get_allow_srm_from_wan()`, `get_firewall_conf()`, `get_forward_conf()`, `get_auto_block()` |
+| `get_wifi_radios()` -> `WifiRadio` (`configured_channel`, `automatic_channel`) | `get_wifi_radio_settings()` + `get_wifi_radio_status()`; `helpers.pair_radios` |
+| `get_wifi_clients()` -> `WifiClient` (`mac`, `link_rate_mbps`, `connected_for`) | `get_wifi_devices()` -> `WifiDevices.device_list` (`mac_address`, `current_rate`, `associate_up_time`) |
+| `get_ethernet_ports()` -> `EthernetPort` (`linked`, `speed_mbps`) | `get_eth_port_info()` -> `EthPortInfo.nodes[].eth_port_info` (`has_link`, `link_speed`) |
+| `get_mesh_nodes()` -> tuple of `MeshNode` (`online`, `is_root`) | `get_mesh_nodes()` -> `MeshNodes.nodes` (`network_status`); `helpers.is_root` |
+| `get_usb_volumes()` -> `UsbVolume` (`total_bytes`, `used_percent`) | `get_usb_volumes()` -> `StorageVolumes.volumes` (`size_total_byte`, `size_free_byte`); `helpers.used_percent` |
+| `SystemInfo` (`firmware_version`, `cpu_clock_mhz`, `ram_mb`, `uptime`, `firmware_date: date`) | `SystemInfo` (`firmware_ver`, `cpu_clock_speed`, `ram_size`, `up_time`, `firmware_date: str`); `helpers.up_time`, `helpers.firmware_date` |
+| `Utilization` (`cpu_*_percent`, `memory_*_kib`, `interfaces`, `cpu_total_percent`) | `Utilization.cpu` / `.memory` / `.network` with SRM's keys; `helpers.cpu_total_percent` |
+| `NetworkDevice` (`ipv4_address`, `ipv6_addresses`, `online`, `wireless`, `signal`, `device_type`, `blocked`) | `NetworkDevice` (`ip_addr`, `ip6_addr`, `is_online`, `is_wireless`, `signalstrength`, `dev_type`, `is_baned`); `helpers.split_addresses` |
+| `fingerprint()`, `address_scope()`, `normalize_mac()`, `Family`, `AddressScope` at the top level | `helpers.config_hash()`, `helpers.address_scope()`, `helpers.normalize_mac()`, `helpers.AddressScope` |
+
+### Fixed
+
+- Digit strings longer than Python's `int()` limit raised `ValueError`; they are `None` now.
+- After a failed login the same exception object was raised on every call, so its traceback grew
+  and kept the login's frame alive; each call raises a fresh error now.
+- The diagnostics command logged in twice and left the first session open; one error such as a
+  timeout no longer ends the report.
+- A host with a port, path or user name is refused with `ValueError` instead of building a wrong
+  URL; `[IPv6]` hosts are accepted.
+- A read spec's parameters could override `api`, `method` or `version`; they are sent first and
+  may not name those keys.
+- A host given as `name:port` was bracketed like an IPv6 address.
+
 ### Added
 
 - `aiosynologysrm-diagnostics --no-counts` and `collect_diagnostics(client, counts=False)` leave
@@ -126,7 +196,8 @@ All notable changes to this project are documented here. The format follows
 - `scripts/anonymize.py` to turn real router answers into publishable test fixtures.
 - Fixtures from an RT2600ac with SRM 1.3.2.
 
-[Unreleased]: https://github.com/eizedev/aiosynologysrm/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/eizedev/aiosynologysrm/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/eizedev/aiosynologysrm/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/eizedev/aiosynologysrm/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/eizedev/aiosynologysrm/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/eizedev/aiosynologysrm/compare/v0.1.0...v0.2.0

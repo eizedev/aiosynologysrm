@@ -1,302 +1,220 @@
-"""Typed views of firewall, port forwarding and related security settings.
+"""Typed views of SRM answers: firewall, port forwarding and the security switches.
 
-:class:`FirewallRules` and :class:`SecuritySettings` have a ``fingerprint``: a hash over their
-content without hit counters, so a caller can tell that the configuration changed without
-comparing it field by field. For any other list, :func:`fingerprint` over the items' ``raw``
-gives the same kind of hash.
+Same rules as :mod:`aiosynologysrm.models`: SRM's keys and structure, Python types, the object in
+a read-only ``raw``. To detect configuration changes, hash the ``raw`` of these models with
+:func:`aiosynologysrm.helpers.config_hash`.
 """
 
 from __future__ import annotations
 
-import hashlib
-import json
-from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field, fields
+from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any
 
-from ._parse import frozen, normalize_mac, raw_field, to_bool, to_int, to_list, to_mapping, to_str
-
-
-def fingerprint(payloads: Iterable[Mapping[str, Any]], ignore: frozenset[str] = frozenset()) -> str:
-    """Return a stable SHA-256 over JSON payloads, leaving out the keys in ``ignore``."""
-    canonical = [{k: v for k, v in sorted(item.items()) if k not in ignore} for item in payloads]
-    data = json.dumps(canonical, sort_keys=True, separators=(",", ":"), default=str)
-    return hashlib.sha256(data.encode()).hexdigest()
+from ._parse import (
+    SrmModel,
+    many,
+    one,
+    raw_field,
+    srm,
+    to_bool,
+    to_int,
+    to_int_or_str,
+    to_str,
+    to_str_tuple,
+)
 
 
 @dataclass(frozen=True, slots=True)
-class Endpoint:
-    """Source or destination of a rule: address and port, each as SRM describes it.
+class FirewallDefaultPolicy(SrmModel):
+    """What happens to traffic from the internet that no rule matches: ``allow`` or ``deny``."""
 
-    ``ip_type`` is for example ``all``, ``single`` or ``geo`` (``ip_value`` is then a country
-    code); ``port_type`` is ``all``, ``custom`` or ``service``.
+    ipv4_wan_to_lan: str | None = srm("ipv4_wan_to_lan", to_str)
+    ipv4_wan_to_srm: str | None = srm("ipv4_wan_to_srm", to_str)
+    ipv6_wan_to_lan: str | None = srm("ipv6_wan_to_lan", to_str)
+    ipv6_wan_to_srm: str | None = srm("ipv6_wan_to_srm", to_str)
+    raw: Mapping[str, Any] = raw_field()
+
+
+@dataclass(frozen=True, slots=True)
+class FirewallRule(SrmModel):
+    """One firewall rule, in the order the router applies them.
+
+    ``chain`` is ``input`` (to the router), ``forward`` (through it) or ``both_input_forward``;
+    ``src_ip_type`` ``geo`` means ``src_ip_value`` holds country codes. Packet counters come from
+    a separate call (:meth:`SrmClient.get_firewall_hit_counts`), joined by ``ui_id``.
     """
 
-    ip_type: str | None
-    ip_value: str | None
-    port_type: str | None
-    port_value: str | None
-
-    @classmethod
-    def from_api(cls, data: Mapping[str, Any], prefix: str) -> Endpoint:
-        """Build from the ``src_*`` or ``dst_*`` fields of a rule."""
-        return cls(
-            ip_type=to_str(data.get(f"{prefix}_ip_type")),
-            ip_value=to_str(data.get(f"{prefix}_ip_value")),
-            port_type=to_str(data.get(f"{prefix}_port_type")),
-            port_value=to_str(data.get(f"{prefix}_port_value")),
-        )
+    ui_id: int | None = srm("ui_id", to_int)
+    name: str | None = srm("name", to_str)
+    enabled: bool | None = srm("enabled", to_bool)
+    action: str | None = srm("action", to_str)
+    chain: str | None = srm("chain", to_str)
+    ip_version: str | None = srm("ip_version", to_str)
+    protocol: str | None = srm("protocol", to_str)
+    src_ip_type: str | None = srm("src_ip_type", to_str)
+    src_ip_value: str | None = srm("src_ip_value", to_str)
+    src_port_type: str | None = srm("src_port_type", to_str)
+    src_port_value: str | None = srm("src_port_value", to_str)
+    dst_ip_type: str | None = srm("dst_ip_type", to_str)
+    dst_ip_value: str | None = srm("dst_ip_value", to_str)
+    dst_port_type: str | None = srm("dst_port_type", to_str)
+    dst_port_value: str | None = srm("dst_port_value", to_str)
+    in_interface_type: str | None = srm("in_interface_type", to_str)
+    in_interface_value: tuple[str, ...] = srm("in_interface_value", to_str_tuple)
+    out_interface_type: str | None = srm("out_interface_type", to_str)
+    out_interface_value: tuple[str, ...] = srm("out_interface_value", to_str_tuple)
+    logged: bool | None = srm("logged", to_bool)
+    profile: str | None = srm("profile", to_str)
+    created_by: str | None = srm("created_by", to_str)
+    raw: Mapping[str, Any] = raw_field()
 
 
 @dataclass(frozen=True, slots=True)
-class FirewallRule:
-    """One rule of the router's firewall, in the order the router applies them."""
+class FirewallRules(SrmModel):
+    """The answer of ``SYNO.Core.Security.Firewall.Rules`` ``get``."""
 
-    ui_id: int | None
-    name: str | None
-    enabled: bool | None
-    action: str | None
-    """``allow`` or ``deny``."""
-    chain: str | None
-    """``input`` (to the router), ``forward`` (through it) or ``both_input_forward``."""
-    ip_version: str | None
-    """``v4``, ``v6`` or ``both_v4_v6``."""
-    protocol: str | None
-    source: Endpoint
-    destination: Endpoint
-    in_interfaces: tuple[str, ...]
-    """Empty when the rule applies to every interface."""
-    out_interfaces: tuple[str, ...]
-    logged: bool | None
-    hits: int | None
-    """Packets matched since the counters were last reset, summed over the kernel rules SRM
-    creates for this rule; ``None`` if the router reported no counter for it."""
+    default_policy: FirewallDefaultPolicy | None = srm("default_policy", one(FirewallDefaultPolicy))
+    rules: tuple[FirewallRule, ...] = srm("rules", many(FirewallRule))
     raw: Mapping[str, Any] = raw_field()
-
-    @classmethod
-    def from_api(cls, item: Mapping[str, Any], hits: Mapping[int, int]) -> FirewallRule:
-        """Build from one rule and the summed hit counters by ``ui_id``."""
-        ui_id = to_int(item.get("ui_id"))
-        return cls(
-            ui_id=ui_id,
-            name=to_str(item.get("name")),
-            enabled=to_bool(item.get("enabled")),
-            action=to_str(item.get("action")),
-            chain=to_str(item.get("chain")),
-            ip_version=to_str(item.get("ip_version")),
-            protocol=to_str(item.get("protocol")),
-            source=Endpoint.from_api(item, "src"),
-            destination=Endpoint.from_api(item, "dst"),
-            in_interfaces=tuple(
-                i for i in to_list(item.get("in_interface_value")) if isinstance(i, str)
-            ),
-            out_interfaces=tuple(
-                i for i in to_list(item.get("out_interface_value")) if isinstance(i, str)
-            ),
-            logged=to_bool(item.get("logged")),
-            hits=hits.get(ui_id) if ui_id is not None else None,
-            raw=frozen(item),
-        )
 
 
 @dataclass(frozen=True, slots=True)
-class FirewallRules:
-    """The firewall: default policies for traffic from the internet, and the rule list."""
+class FirewallHitCount(SrmModel):
+    """Packets one kernel rule matched (``Firewall.Rules.HitCount`` ``get``).
 
-    default_policy: Mapping[str, str] = field(hash=False)
-    """For example ``{"ipv4_wan_to_lan": "deny", "ipv4_wan_to_srm": "deny", ...}``."""
-    rules: tuple[FirewallRule, ...]
+    SRM creates several kernel rules per firewall rule, so a ``ui_id`` can appear more than once;
+    :func:`aiosynologysrm.helpers.hits_by_rule` sums them.
+    """
+
+    ui_id: int | None = srm("ui_id", to_int)
+    hit_count: int | None = srm("hit_count", to_int)
     raw: Mapping[str, Any] = raw_field()
-    """The ``Rules`` answer; hit counters are in each rule's ``hits``."""
-
-    @property
-    def fingerprint(self) -> str:
-        """Hash of policies and rules without hit counters; changes when the setup changes."""
-        policy = [{"default_policy": dict(self.default_policy)}]
-        return fingerprint([*policy, *(r.raw for r in self.rules)])
-
-    @classmethod
-    def from_api(cls, rules: Mapping[str, Any], hit_counts: Any) -> FirewallRules:
-        """Build from the ``Rules`` answer and the ``Rules.HitCount`` answer."""
-        hits: dict[int, int] = {}
-        for entry in to_list(hit_counts):
-            if not isinstance(entry, Mapping):
-                continue
-            ui_id, count = to_int(entry.get("ui_id")), to_int(entry.get("hit_count"))
-            if ui_id is not None and count is not None:
-                hits[ui_id] = hits.get(ui_id, 0) + count
-        policy = {
-            k: v for k, v in to_mapping(rules.get("default_policy")).items() if isinstance(v, str)
-        }
-        items = (i for i in to_list(rules.get("rules")) if isinstance(i, Mapping))
-        return cls(
-            default_policy=frozen(policy),
-            rules=tuple(FirewallRule.from_api(i, hits) for i in items),
-            raw=frozen(rules),
-        )
 
 
 @dataclass(frozen=True, slots=True)
-class ForwardRule:
-    """A firewall opening that SRM created for a port forward, DMZ host or UPnP mapping."""
+class ForwardRule(SrmModel):
+    """A firewall opening SRM created for a port forward, DMZ host or UPnP mapping.
 
-    name: str | None
-    kind: str | None
-    """SRM's ``type``, for example ``upnp``."""
-    protocol: str | None
-    ip_version: str | None
-    source: Endpoint
-    destination: Endpoint
-    hits: int | None
+    ``type`` says which (``upnp``, ...); ``hit_count`` is its packet counter.
+    """
+
+    name: str | None = srm("name", to_str)
+    type: str | None = srm("type", to_str)
+    protocol: str | None = srm("protocol", to_str)
+    ip_version: str | None = srm("ip_version", to_str)
+    src_ip_type: str | None = srm("src_ip_type", to_str)
+    src_ip_value: str | None = srm("src_ip_value", to_str)
+    src_port_type: str | None = srm("src_port_type", to_str)
+    src_port_value: str | None = srm("src_port_value", to_str)
+    dst_ip_type: str | None = srm("dst_ip_type", to_str)
+    dst_ip_value: str | None = srm("dst_ip_value", to_str)
+    dst_port_type: str | None = srm("dst_port_type", to_str)
+    dst_port_value: str | None = srm("dst_port_value", to_str)
+    hit_count: int | None = srm("hit_count", to_int)
+    duplicated_rules: int | None = srm("duplicated_rules", to_int)
+    created_by: str | None = srm("created_by", to_str)
     raw: Mapping[str, Any] = raw_field()
-
-    @classmethod
-    def list_from_api(cls, data: Mapping[str, Any]) -> tuple[ForwardRule, ...]:
-        """Build from the ``data`` member of ``Firewall.Forward.Rules``."""
-        return tuple(
-            cls(
-                name=to_str(item.get("name")),
-                kind=to_str(item.get("type")),
-                protocol=to_str(item.get("protocol")),
-                ip_version=to_str(item.get("ip_version")),
-                source=Endpoint.from_api(item, "src"),
-                destination=Endpoint.from_api(item, "dst"),
-                hits=to_int(item.get("hit_count")),
-                raw=frozen(item),
-            )
-            for item in to_list(data.get("rules"))
-            if isinstance(item, Mapping)
-        )
 
 
 @dataclass(frozen=True, slots=True)
-class PortForward:
-    """A port forwarding rule, set up by hand or opened by a device through UPnP."""
+class ForwardRules(SrmModel):
+    """The answer of ``SYNO.Core.Security.Firewall.Forward.Rules`` ``get``."""
 
-    enabled: bool | None
-    service: str | None
-    protocol: str | None
-    external_port: str | None
-    """The router's port; SRM's ``sourcePort``. May be a range such as ``"8000-8010"``."""
-    target_address: str | None
-    target_port: str | None
-    upnp: bool
-    """Opened by a device on the network through UPnP rather than configured by hand."""
+    rules: tuple[ForwardRule, ...] = srm("rules", many(ForwardRule))
     raw: Mapping[str, Any] = raw_field()
-
-    @classmethod
-    def list_from_api(cls, data: Mapping[str, Any]) -> tuple[PortForward, ...]:
-        """Build from the ``data`` member of ``Router.PortForward``."""
-        return tuple(
-            cls(
-                enabled=to_bool(item.get("enabled")),
-                service=to_str(item.get("service")),
-                protocol=to_str(item.get("protocol")),
-                external_port=_port(item.get("sourcePort")),
-                target_address=to_str(item.get("targetIP")),
-                target_port=_port(item.get("targetPort")),
-                upnp=item.get("type") == "upnp",
-                raw=frozen(item),
-            )
-            for item in to_list(data.get("rules"))
-            if isinstance(item, Mapping)
-        )
 
 
 @dataclass(frozen=True, slots=True)
-class PortTrigger:
-    """A port trigger: outgoing traffic on ``trigger_ports`` opens ``open_ports`` inbound."""
+class PortForward(SrmModel):
+    """A port forward; ``type`` ``upnp`` marks one a device opened itself.
 
-    enabled: bool | None
-    service: str | None
-    protocol: str | None
-    trigger_ports: str | None
-    open_ports: str | None
-    mac: str | None
-    address: str | None
-    status: str | None
+    Ports are numbers, or text for ranges such as ``8000-8010``.
+    """
+
+    enabled: bool | None = srm("enabled", to_bool)
+    type: str | None = srm("type", to_str)
+    service: str | None = srm("service", to_str)
+    protocol: str | None = srm("protocol", to_str)
+    source_port: int | str | None = srm("sourcePort", to_int_or_str)
+    target_ip: str | None = srm("targetIP", to_str)
+    target_port: int | str | None = srm("targetPort", to_int_or_str)
     raw: Mapping[str, Any] = raw_field()
-
-    @classmethod
-    def list_from_api(cls, data: Mapping[str, Any]) -> tuple[PortTrigger, ...]:
-        """Build from the ``data`` member of ``Router.PortTrigger``."""
-        return tuple(
-            cls(
-                enabled=to_bool(item.get("enabled")),
-                service=to_str(item.get("service")),
-                protocol=to_str(item.get("protocol")),
-                trigger_ports=_port(item.get("mport")),
-                open_ports=_port(item.get("rport")),
-                mac=normalize_mac(item.get("mac")),
-                address=to_str(item.get("ipaddr")),
-                status=to_str(item.get("status")),
-                raw=frozen(item),
-            )
-            for item in to_list(data.get("configs"))
-            if isinstance(item, Mapping)
-        )
 
 
 @dataclass(frozen=True, slots=True)
-class SecuritySettings:
-    """Switches that decide what the internet can reach, collected from several answers."""
+class PortForwards(SrmModel):
+    """The answer of ``SYNO.Core.Network.Router.PortForward`` ``get`` (UPnP included)."""
 
-    srm_reachable_from_wan: bool | None
-    """SRM's "allow access to SRM from the internet" option (``AllowSrmFromWan``)."""
-    port_check: bool | None
-    forward_rules_for_port_forwards: bool | None
-    forward_rules_for_dmz: bool | None
-    forward_rules_for_upnp: bool | None
-    """Whether SRM opens the firewall automatically for port forwards, the DMZ host and UPnP."""
-    auto_block_enabled: bool | None
-    auto_block_attempts: int | None
-    auto_block_within_minutes: int | None
-    auto_block_expire_days: int | None
-    """``0`` means blocked addresses never expire."""
+    rules: tuple[PortForward, ...] = srm("rules", many(PortForward))
     raw: Mapping[str, Any] = raw_field()
-    """The four answers, keyed ``allow_srm_from_wan``, ``firewall_conf``, ``forward_conf`` and
-    ``auto_block``."""
-
-    @property
-    def fingerprint(self) -> str:
-        """Hash of all settings; changes when any of them changes."""
-        values = {f.name: getattr(self, f.name) for f in fields(self) if f.compare}
-        return fingerprint([values])
-
-    @classmethod
-    def from_api(
-        cls,
-        allow_srm_from_wan: Mapping[str, Any],
-        firewall_conf: Mapping[str, Any],
-        forward_conf: Mapping[str, Any],
-        auto_block: Mapping[str, Any],
-    ) -> SecuritySettings:
-        """Build from the four answers."""
-        return cls(
-            srm_reachable_from_wan=to_bool(allow_srm_from_wan.get("enable")),
-            port_check=to_bool(firewall_conf.get("enable_port_check")),
-            forward_rules_for_port_forwards=to_bool(forward_conf.get("pf_auto_fw_rules")),
-            forward_rules_for_dmz=to_bool(forward_conf.get("dmz_auto_fw_rules")),
-            forward_rules_for_upnp=to_bool(forward_conf.get("upnp_auto_fw_rules")),
-            auto_block_enabled=to_bool(auto_block.get("enable")),
-            auto_block_attempts=to_int(auto_block.get("attempts")),
-            auto_block_within_minutes=to_int(auto_block.get("within_mins")),
-            auto_block_expire_days=to_int(auto_block.get("expire_day")),
-            raw=frozen(
-                {
-                    "allow_srm_from_wan": allow_srm_from_wan,
-                    "firewall_conf": firewall_conf,
-                    "forward_conf": forward_conf,
-                    "auto_block": auto_block,
-                }
-            ),
-        )
 
 
-def _port(value: Any) -> str | None:
-    """Ports come as numbers or strings (ranges); keep them as text."""
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int):
-        return str(value)
-    return to_str(value)
+@dataclass(frozen=True, slots=True)
+class PortTrigger(SrmModel):
+    """A port trigger: outgoing traffic on ``mport`` opens ``rport`` inbound.
+
+    The keys follow SRM's web interface; no recorded router had a trigger yet.
+    """
+
+    enabled: bool | None = srm("enabled", to_bool)
+    service: str | None = srm("service", to_str)
+    protocol: str | None = srm("protocol", to_str)
+    mport: int | str | None = srm("mport", to_int_or_str)
+    rport: int | str | None = srm("rport", to_int_or_str)
+    mac: str | None = srm("mac", to_str)
+    ipaddr: str | None = srm("ipaddr", to_str)
+    status: str | None = srm("status", to_str)
+    raw: Mapping[str, Any] = raw_field()
+
+
+@dataclass(frozen=True, slots=True)
+class PortTriggers(SrmModel):
+    """The answer of ``SYNO.Core.Network.Router.PortTrigger`` ``list``."""
+
+    configs: tuple[PortTrigger, ...] = srm("configs", many(PortTrigger))
+    timeout: int | None = srm("timeout", to_int)
+    raw: Mapping[str, Any] = raw_field()
+
+
+@dataclass(frozen=True, slots=True)
+class AllowSrmFromWan(SrmModel):
+    """SRM's "allow access to SRM from the internet" (``Firewall.AllowSrmFromWan`` ``get``)."""
+
+    enable: bool | None = srm("enable", to_bool)
+    raw: Mapping[str, Any] = raw_field()
+
+
+@dataclass(frozen=True, slots=True)
+class FirewallConf(SrmModel):
+    """General firewall settings (``SYNO.Core.Security.Firewall.Conf`` ``get``)."""
+
+    enable_port_check: bool | None = srm("enable_port_check", to_bool)
+    raw: Mapping[str, Any] = raw_field()
+
+
+@dataclass(frozen=True, slots=True)
+class ForwardConf(SrmModel):
+    """Whether SRM opens the firewall by itself (``Firewall.Forward.Conf`` ``get``).
+
+    For port forwards (``pf``), the DMZ host and UPnP.
+    """
+
+    pf_auto_fw_rules: bool | None = srm("pf_auto_fw_rules", to_bool)
+    dmz_auto_fw_rules: bool | None = srm("dmz_auto_fw_rules", to_bool)
+    upnp_auto_fw_rules: bool | None = srm("upnp_auto_fw_rules", to_bool)
+    raw: Mapping[str, Any] = raw_field()
+
+
+@dataclass(frozen=True, slots=True)
+class AutoBlock(SrmModel):
+    """Blocking after failed logins (``SYNO.Core.Security.AutoBlock`` ``get``).
+
+    ``attempts`` within ``within_mins`` minutes; ``expire_day`` ``0`` means never unblocked.
+    """
+
+    enable: bool | None = srm("enable", to_bool)
+    attempts: int | None = srm("attempts", to_int)
+    within_mins: int | None = srm("within_mins", to_int)
+    expire_day: int | None = srm("expire_day", to_int)
+    raw: Mapping[str, Any] = raw_field()
