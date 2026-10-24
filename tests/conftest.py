@@ -18,6 +18,40 @@ from aiosynologysrm import SrmClient
 
 FIXTURES = Path(__file__).parent / "fixtures"
 RT2600AC = FIXTURES / "rt2600ac-srm-1.3.2"
+MR2200AC = FIXTURES / "mr2200ac-srm-1.3.2"
+
+# (api, method) -> (fixture file, min version, max version), as an SRM 1.3.2 catalog lists them.
+API_FIXTURES: dict[tuple[str, str], tuple[str, int, int]] = {
+    ("SYNO.Core.System", "info"): ("system_info", 1, 2),
+    ("SYNO.Core.System.Utilization", "get"): ("utilization", 1, 1),
+    ("SYNO.Core.Network.NSM.Device", "get"): ("network_devices", 1, 5),
+    ("SYNO.Core.Network.Router.Topology", "get"): ("topology", 1, 4),
+    ("SYNO.Core.Network.Router.ConnectionStatus", "get"): ("wan_status", 1, 1),
+    ("SYNO.Core.DDNS.ExtIP", "list"): ("external_addresses", 1, 1),
+    ("SYNO.Core.Network.IPv6.Router.Prefix", "list"): ("ipv6_prefixes", 1, 1),
+    ("SYNO.Core.Network.DHCPServer", "get"): ("dhcp_servers", 1, 1),
+    ("SYNO.Core.Network.DHCPServer.ClientList", "list"): ("dhcp_leases", 1, 2),
+    ("SYNO.Core.Network.DHCPServer.Reservation", "get"): ("dhcp_reservations", 1, 2),
+}
+# Parameters the real router insists on; without them it answers 4302.
+REQUIRED_PARAMS: dict[tuple[str, str], dict[str, str]] = {
+    ("SYNO.Core.Network.DHCPServer.ClientList", "list"): {"ifname": "all"},
+}
+
+
+def catalog() -> dict[str, dict[str, Any]]:
+    entries = {
+        "SYNO.API.Auth": {"minVersion": 1, "maxVersion": 3, "path": "auth.cgi"},
+        "SYNO.API.Info": {"minVersion": 1, "maxVersion": 1, "path": "query.cgi"},
+    }
+    for (api, _), (_, low, high) in API_FIXTURES.items():
+        entries[api] = {"minVersion": low, "maxVersion": high, "path": "entry.cgi"}
+    return entries
+
+
+def responses(folder: Path) -> dict[tuple[str, str], Any]:
+    return {key: load(folder / f"{name}.json") for key, (name, _, _) in API_FIXTURES.items()}
+
 
 USERNAME = "homeassistant"
 PASSWORD = "correct horse"
@@ -37,22 +71,8 @@ def load(path: Path) -> Any:
 class FakeSrm:
     """State and behaviour of the fake router; tests adjust the fields."""
 
-    catalog: dict[str, dict[str, Any]] = field(
-        default_factory=lambda: {
-            "SYNO.API.Auth": {"minVersion": 1, "maxVersion": 3, "path": "auth.cgi"},
-            "SYNO.API.Info": {"minVersion": 1, "maxVersion": 1, "path": "query.cgi"},
-            "SYNO.Core.System": {"minVersion": 1, "maxVersion": 2, "path": "entry.cgi"},
-            "SYNO.Core.System.Utilization": {"minVersion": 1, "maxVersion": 1, "path": "entry.cgi"},
-            "SYNO.Core.Network.NSM.Device": {"minVersion": 1, "maxVersion": 5, "path": "entry.cgi"},
-        }
-    )
-    responses: dict[tuple[str, str], Any] = field(
-        default_factory=lambda: {
-            ("SYNO.Core.System", "info"): load(RT2600AC / "system_info.json"),
-            ("SYNO.Core.System.Utilization", "get"): load(RT2600AC / "utilization.json"),
-            ("SYNO.Core.Network.NSM.Device", "get"): load(RT2600AC / "network_devices.json"),
-        }
-    )
+    catalog: dict[str, dict[str, Any]] = field(default_factory=catalog)
+    responses: dict[tuple[str, str], Any] = field(default_factory=lambda: responses(RT2600AC))
     errors: dict[tuple[str, str], int] = field(default_factory=dict)
     login_error: int | None = None
     require_otp: bool = False
@@ -106,6 +126,9 @@ class FakeSrm:
             return self.fail(self.errors[key])
         if key not in self.responses:
             return self.fail(103)
+        required = REQUIRED_PARAMS.get(key, {})
+        if any(form.get(name) != value for name, value in required.items()):
+            return self.fail(4302)
         return self.ok(self.responses[key])
 
     def auth(self, form: dict[str, str]) -> web.Response:

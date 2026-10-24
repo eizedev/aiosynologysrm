@@ -8,54 +8,12 @@ verified against a router; ``*_raw`` fields are passed through as SRM reports th
 
 from __future__ import annotations
 
-import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Any
 
-_MAC = re.compile(r"^[0-9a-f]{2}(?:[:-]?[0-9a-f]{2}){5}$")
-
-
-def _int(value: Any) -> int | None:
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str) and value.strip().lstrip("-").isdigit():
-        return int(value)
-    return None
-
-
-def _str(value: Any) -> str | None:
-    return value if isinstance(value, str) and value != "" else None
-
-
-def _bool(value: Any) -> bool | None:
-    if isinstance(value, bool):
-        return value
-    if value in (0, 1, "0", "1", "true", "false"):
-        return value in (1, "1", "true")
-    return None
-
-
-def _mapping(value: Any) -> Mapping[str, Any]:
-    return value if isinstance(value, Mapping) else {}
-
-
-def _list(value: Any) -> list[Any]:
-    return value if isinstance(value, list) else []
-
-
-def normalize_mac(value: Any) -> str | None:
-    """Return a MAC address as lowercase ``aa:bb:cc:dd:ee:ff``, or ``None`` if it is not one."""
-    if not isinstance(value, str):
-        return None
-    text = value.strip().lower()
-    if not _MAC.match(text):
-        return None
-    digits = text.replace(":", "").replace("-", "")
-    return ":".join(digits[i : i + 2] for i in range(0, 12, 2))
+from ._parse import normalize_mac, to_bool, to_int, to_list, to_mapping, to_str
 
 
 def _uptime(value: Any) -> timedelta | None:
@@ -90,17 +48,17 @@ class SystemInfo:
     def from_api(cls, data: Mapping[str, Any]) -> SystemInfo:
         """Build from the ``data`` member of the response."""
         return cls(
-            model=_str(data.get("model")),
-            firmware_version=_str(data.get("firmware_ver")),
-            firmware_date=_str(data.get("firmware_date")),
-            cpu_vendor=_str(data.get("cpu_vendor")),
-            cpu_family=_str(data.get("cpu_family")),
-            cpu_series=_str(data.get("cpu_series")),
-            cpu_cores=_int(data.get("cpu_cores")),
-            cpu_clock_mhz=_int(data.get("cpu_clock_speed")),
-            ram_mb=_int(data.get("ram_size")),
+            model=to_str(data.get("model")),
+            firmware_version=to_str(data.get("firmware_ver")),
+            firmware_date=to_str(data.get("firmware_date")),
+            cpu_vendor=to_str(data.get("cpu_vendor")),
+            cpu_family=to_str(data.get("cpu_family")),
+            cpu_series=to_str(data.get("cpu_series")),
+            cpu_cores=to_int(data.get("cpu_cores")),
+            cpu_clock_mhz=to_int(data.get("cpu_clock_speed")),
+            ram_mb=to_int(data.get("ram_size")),
             uptime=_uptime(data.get("up_time")),
-            time_zone=_str(data.get("time_zone")),
+            time_zone=to_str(data.get("time_zone")),
             raw=data,
         )
 
@@ -147,29 +105,29 @@ class Utilization:
     @classmethod
     def from_api(cls, data: Mapping[str, Any]) -> Utilization:
         """Build from the ``data`` member of the response."""
-        cpu = _mapping(data.get("cpu"))
-        memory = _mapping(data.get("memory"))
-        network = _list(data.get("network"))
+        cpu = to_mapping(data.get("cpu"))
+        memory = to_mapping(data.get("memory"))
+        network = to_list(data.get("network"))
         interfaces = tuple(
             InterfaceTraffic(
-                device=item["device"], rx_raw=_int(item.get("rx")), tx_raw=_int(item.get("tx"))
+                device=item["device"], rx_raw=to_int(item.get("rx")), tx_raw=to_int(item.get("tx"))
             )
             for item in network
             if isinstance(item, Mapping) and isinstance(item.get("device"), str)
         )
         return cls(
-            cpu_user_percent=_int(cpu.get("user_load")),
-            cpu_system_percent=_int(cpu.get("system_load")),
-            cpu_other_percent=_int(cpu.get("other_load")),
-            load_1min_raw=_int(cpu.get("1min_load")),
-            load_5min_raw=_int(cpu.get("5min_load")),
-            load_15min_raw=_int(cpu.get("15min_load")),
-            memory_usage_percent=_int(memory.get("real_usage")),
-            memory_total_kib=_int(memory.get("total_real")),
-            memory_available_kib=_int(memory.get("avail_real")),
-            memory_cached_kib=_int(memory.get("cached")),
-            memory_buffer_kib=_int(memory.get("buffer")),
-            swap_usage_percent=_int(memory.get("swap_usage")),
+            cpu_user_percent=to_int(cpu.get("user_load")),
+            cpu_system_percent=to_int(cpu.get("system_load")),
+            cpu_other_percent=to_int(cpu.get("other_load")),
+            load_1min_raw=to_int(cpu.get("1min_load")),
+            load_5min_raw=to_int(cpu.get("5min_load")),
+            load_15min_raw=to_int(cpu.get("15min_load")),
+            memory_usage_percent=to_int(memory.get("real_usage")),
+            memory_total_kib=to_int(memory.get("total_real")),
+            memory_available_kib=to_int(memory.get("avail_real")),
+            memory_cached_kib=to_int(memory.get("cached")),
+            memory_buffer_kib=to_int(memory.get("buffer")),
+            swap_usage_percent=to_int(memory.get("swap_usage")),
             interfaces=interfaces,
             raw=data,
         )
@@ -222,26 +180,26 @@ class NetworkDevice:
             ipv6_addresses = ()
         return cls(
             mac=mac,
-            hostname=_str(item.get("hostname")),
-            ip_address=_str(item.get("ip_addr")),
+            hostname=to_str(item.get("hostname")),
+            ip_address=to_str(item.get("ip_addr")),
             ipv6_addresses=tuple(a.strip() for a in ipv6_addresses),
-            online=_bool(item.get("is_online")),
-            wireless=_bool(item.get("is_wireless")),
-            connection=_str(item.get("connection")),
-            band=_str(item.get("band")),
-            ssid=_str(item.get("wifi_ssid")),
-            signal_strength=_int(item.get("signalstrength")),
-            link_rate_mbps=_int(item.get("current_rate")),
-            max_link_rate_mbps=_int(item.get("max_rate")),
-            rate_quality=_str(item.get("rate_quality")),
-            rx_rate_raw=_int(item.get("transferRXRate")),
-            tx_rate_raw=_int(item.get("transferTXRate")),
-            mesh_node_id=_int(item.get("mesh_node_id")),
-            mesh_node_name=_str(item.get("mesh_node_name")),
-            network=_str(item.get("network")),
-            device_type=_str(item.get("dev_type")),
-            guest=_bool(item.get("is_guest")),
-            blocked=_bool(item.get("is_baned")),
+            online=to_bool(item.get("is_online")),
+            wireless=to_bool(item.get("is_wireless")),
+            connection=to_str(item.get("connection")),
+            band=to_str(item.get("band")),
+            ssid=to_str(item.get("wifi_ssid")),
+            signal_strength=to_int(item.get("signalstrength")),
+            link_rate_mbps=to_int(item.get("current_rate")),
+            max_link_rate_mbps=to_int(item.get("max_rate")),
+            rate_quality=to_str(item.get("rate_quality")),
+            rx_rate_raw=to_int(item.get("transferRXRate")),
+            tx_rate_raw=to_int(item.get("transferTXRate")),
+            mesh_node_id=to_int(item.get("mesh_node_id")),
+            mesh_node_name=to_str(item.get("mesh_node_name")),
+            network=to_str(item.get("network")),
+            device_type=to_str(item.get("dev_type")),
+            guest=to_bool(item.get("is_guest")),
+            blocked=to_bool(item.get("is_baned")),
             raw=item,
         )
 
@@ -257,9 +215,9 @@ class NetworkDevices:
     @classmethod
     def from_api(cls, data: Mapping[str, Any]) -> NetworkDevices:
         """Build from the ``data`` member; entries without a valid MAC are skipped."""
-        items = _list(data.get("devices"))
+        items = to_list(data.get("devices"))
         parsed = (NetworkDevice.from_api(i) for i in items if isinstance(i, Mapping))
         return cls(
             devices=tuple(d for d in parsed if d is not None),
-            truncated=_bool(data.get("exceed_dev_list_max")) is True,
+            truncated=to_bool(data.get("exceed_dev_list_max")) is True,
         )

@@ -6,6 +6,19 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `get_operating_mode()`: router or standalone access point.
+- `get_wan_status()`, `get_external_addresses()`, `get_ipv6_prefixes()`.
+- `get_dhcp_servers()`, `get_dhcp_leases()` (IPv4 and IPv6, with remaining lease time) and
+  `get_dhcp_reservations()`.
+- Fixtures from an MR2200ac running as standalone access point.
+
+### Changed
+
+- `scripts/anonymize.py` replaces DHCPv6 client ids, keeps shared IPv6 prefixes shared and
+  anonymizes several files in one run, so relations between answers survive.
+
 ## [0.1.0] - 2026-10-24
 
 ### Added

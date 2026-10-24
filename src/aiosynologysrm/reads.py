@@ -42,4 +42,25 @@ SYSTEM_INFO: Final = ReadSpec("SYNO.Core.System", "info", (2, 1))
 UTILIZATION: Final = ReadSpec("SYNO.Core.System.Utilization", "get", (1,))
 NETWORK_DEVICES: Final = ReadSpec("SYNO.Core.Network.NSM.Device", "get", (5,))
 
-ALL_READS: Final = (SYSTEM_INFO, UTILIZATION, NETWORK_DEVICES)
+OPERATING_MODE: Final = ReadSpec("SYNO.Core.Network.Router.Topology", "get", (4,))
+WAN_STATUS: Final = ReadSpec("SYNO.Core.Network.Router.ConnectionStatus", "get", (1,))
+EXTERNAL_ADDRESSES: Final = ReadSpec("SYNO.Core.DDNS.ExtIP", "list", (1,))
+IPV6_PREFIXES: Final = ReadSpec("SYNO.Core.Network.IPv6.Router.Prefix", "list", (1,))
+DHCP_SERVERS: Final = ReadSpec("SYNO.Core.Network.DHCPServer", "get", (1,))
+DHCP_LEASES: Final = ReadSpec(
+    "SYNO.Core.Network.DHCPServer.ClientList", "list", (2,), (("ifname", "all"),)
+)
+DHCP_RESERVATIONS: Final = ReadSpec("SYNO.Core.Network.DHCPServer.Reservation", "get", (2,))
+
+ALL_READS: Final = (
+    SYSTEM_INFO,
+    UTILIZATION,
+    NETWORK_DEVICES,
+    OPERATING_MODE,
+    WAN_STATUS,
+    EXTERNAL_ADDRESSES,
+    IPV6_PREFIXES,
+    DHCP_SERVERS,
+    DHCP_LEASES,
+    DHCP_RESERVATIONS,
+)

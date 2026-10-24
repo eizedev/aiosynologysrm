@@ -4,8 +4,9 @@ Replaces MAC addresses, IPv4/IPv6 addresses, host names, SSIDs and other names w
 placeholders (the same input always gets the same placeholder, so relations survive), then
 checks that none of the original values is left anywhere in the output.
 
-Usage: python scripts/anonymize.py <raw.json> <fixture.json>
-The input is the ``data`` member of one API response.
+Usage: python scripts/anonymize.py <raw.json> <fixture.json> [<raw.json> <fixture.json> ...]
+Each input is the ``data`` member of one API response. Pass all files of one recording session
+in one call, so placeholders stay consistent across them.
 """
 
 from __future__ import annotations
@@ -17,9 +18,15 @@ import sys
 from pathlib import Path
 from typing import Any
 
+# DHCPv6 client ids (DUIDs) are longer colon-separated hex strings and often embed a MAC
+# address; they are replaced as a whole, before the MAC pattern could match a part of them.
+DUID = re.compile(r"\b[0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){6,129}\b")
 MAC = re.compile(r"\b[0-9A-Fa-f]{2}(?:[:-][0-9A-Fa-f]{2}){5}\b")
 IPV4 = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 IPV6 = re.compile(r"(?<![0-9A-Za-z:])(?:[0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4}(?![0-9A-Za-z:])")
+TOKEN = re.compile(
+    f"(?P<duid>{DUID.pattern})|(?P<mac>{MAC.pattern})|(?P<ipv4>{IPV4.pattern})|(?P<ipv6>{IPV6.pattern})"
+)
 NAME_KEYS = frozenset(
     {
         "hostname",
@@ -48,6 +55,9 @@ class Anonymizer:
         self.macs: dict[str, str] = {}
         self.ipv4: dict[str, str] = {}
         self.ipv6: dict[str, str] = {}
+        self.networks: dict[str, str] = {}
+        self.hosts: dict[str, str] = {}
+        self.duids: dict[str, str] = {}
         self.names: dict[tuple[str, str], str] = {}
         self.originals: set[str] = set()
         self.original_names: set[str] = set()
@@ -74,7 +84,22 @@ class Anonymizer:
             self.originals.add(text)
         return self.ipv4[text]
 
+    def _duid(self, match: re.Match[str]) -> str:
+        key = match.group(0).lower()
+        if key not in self.duids:
+            n = len(self.duids) + 1
+            groups = key.count(":") + 1
+            counter = [f"{(n >> (8 * i)) & 0xFF:02x}" for i in range(groups - 4)][::-1]
+            fake = ["00", "03", "00", "01", *counter]  # DUID-LL header, then a counter
+            self.duids[key] = ":".join(fake[:groups])
+            self.originals.add(key)
+        return self.duids[key]
+
     def _ipv6(self, match: re.Match[str]) -> str:
+        """Replace network (first 64 bits) and host part separately.
+
+        Addresses that shared a prefix still share one afterwards.
+        """
         text = match.group(0)
         try:
             address = ipaddress.IPv6Address(text)
@@ -83,16 +108,41 @@ class Anonymizer:
         if address.is_unspecified or address.is_loopback:
             return text
         if text not in self.ipv6:
-            self.ipv6[text] = f"2001:db8::{len(self.ipv6) + 1:x}"
-            if len(text) > 4:  # noqa: PLR2004 - skip trivial matches like "::"
-                self.originals.add(text.lower())
+            groups = address.exploded.split(":")
+            network, host = ":".join(groups[:4]), ":".join(groups[4:])
+            if address.is_link_local:
+                new_network = "fe80:0:0:0"
+            else:
+                if network not in self.networks:
+                    self.networks[network] = f"2001:db8:{len(self.networks) + 1:x}:0"
+                    self.originals.add(str(ipaddress.IPv6Address(network + "::")).rstrip(":"))
+                new_network = self.networks[network]
+            if host == "0000:0000:0000:0000":
+                new_host = "0:0:0:0"
+            elif host == "0000:0000:0000:0001":
+                new_host = "0:0:0:1"  # the router's own address, a convention, not personal
+            else:
+                if host not in self.hosts:
+                    self.hosts[host] = f"0:0:0:{len(self.hosts) + 0x100:x}"
+                new_host = self.hosts[host]
+            self.ipv6[text] = str(ipaddress.IPv6Address(f"{new_network}:{new_host}"))
+            self.originals.add(str(address))
         return self.ipv6[text]
 
     def text(self, value: str) -> str:
-        """Replace addresses inside free text."""
-        value = MAC.sub(self._mac, value)
-        value = IPV4.sub(self._ipv4, value)
-        return IPV6.sub(self._ipv6, value)
+        """Replace addresses inside free text in one pass, so replacements are never rescanned."""
+
+        def replace(match: re.Match[str]) -> str:
+            kind = match.lastgroup
+            if kind == "duid":
+                return self._duid(match)
+            if kind == "mac":
+                return self._mac(match)
+            if kind == "ipv4":
+                return self._ipv4(match)
+            return self._ipv6(match)
+
+        return TOKEN.sub(replace, value)
 
     def name(self, key: str, value: str) -> str:
         """Replace a personal name with ``<key>-<n>``."""
@@ -144,22 +194,27 @@ def leaks(result: Any, anonymizer: Anonymizer) -> list[str]:
 
 
 def main() -> int:
-    """Anonymize one file and refuse to write it if anything leaks."""
-    if len(sys.argv) != 3:  # noqa: PLR2004
+    """Anonymize one or more files together; write nothing if anything leaks."""
+    args = sys.argv[1:]
+    if not args or len(args) % 2:
         print(__doc__)
         return 2
-    source, target = Path(sys.argv[1]), Path(sys.argv[2])
+    pairs = [(Path(args[i]), Path(args[i + 1])) for i in range(0, len(args), 2)]
+    # One anonymizer for all files, so the same MAC or address gets the same placeholder in
+    # every file (a lease and the device it belongs to, a client seen by two access points).
     anonymizer = Anonymizer()
-    result = anonymizer.walk(json.loads(source.read_text(encoding="utf-8")))
-    output = json.dumps(result, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
-    found = leaks(result, anonymizer)
+    results = [anonymizer.walk(json.loads(src.read_text(encoding="utf-8"))) for src, _ in pairs]
+    found = sorted({leak for result in results for leak in leaks(result, anonymizer)})
     if found:
-        print(f"refusing to write {target}: {len(found)} original values remain")
+        print(f"refusing to write anything: {len(found)} original values remain")
         return 1
-    target.write_text(output, encoding="utf-8")
+    for (_, target), result in zip(pairs, results, strict=True):
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(result, indent=2, ensure_ascii=False, sort_keys=True) + "\n")
     print(
-        f"{target}: {len(anonymizer.macs)} MACs, {len(anonymizer.ipv4)} IPv4, "
-        f"{len(anonymizer.ipv6)} IPv6, {len(anonymizer.names)} names replaced"
+        f"{len(pairs)} file(s): {len(anonymizer.macs)} MACs, {len(anonymizer.ipv4)} IPv4, "
+        f"{len(anonymizer.ipv6)} IPv6, {len(anonymizer.duids)} DUIDs, "
+        f"{len(anonymizer.names)} names replaced"
     )
     return 0
 
