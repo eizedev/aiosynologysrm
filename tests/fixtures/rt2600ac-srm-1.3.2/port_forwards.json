@@ -1,0 +1,58 @@
+{
+  "rules": [
+    {
+      "enabled": true,
+      "protocol": "udp",
+      "service": "",
+      "sourcePort": 9308,
+      "targetIP": "192.0.2.17",
+      "targetPort": 9308,
+      "type": "upnp"
+    },
+    {
+      "enabled": true,
+      "protocol": "tcp",
+      "service": "",
+      "sourcePort": 60964,
+      "targetIP": "192.0.2.53",
+      "targetPort": 80,
+      "type": "upnp"
+    },
+    {
+      "enabled": true,
+      "protocol": "tcp",
+      "service": "",
+      "sourcePort": 60965,
+      "targetIP": "192.0.2.53",
+      "targetPort": 443,
+      "type": "upnp"
+    },
+    {
+      "enabled": true,
+      "protocol": "tcp",
+      "service": "",
+      "sourcePort": 60966,
+      "targetIP": "192.0.2.53",
+      "targetPort": 5000,
+      "type": "upnp"
+    },
+    {
+      "enabled": true,
+      "protocol": "tcp",
+      "service": "",
+      "sourcePort": 60967,
+      "targetIP": "192.0.2.53",
+      "targetPort": 5001,
+      "type": "upnp"
+    },
+    {
+      "enabled": true,
+      "protocol": "tcp",
+      "service": "",
+      "sourcePort": 49786,
+      "targetIP": "192.0.2.49",
+      "targetPort": 6690,
+      "type": "upnp"
+    }
+  ]
+}

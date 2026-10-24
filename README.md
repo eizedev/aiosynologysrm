@@ -118,8 +118,16 @@ asyncio.run(main())
 | `get_dhcp_servers()` | DHCP ranges, gateway, DNS and lease time per local network |
 | `get_dhcp_leases()` | handed-out addresses (IPv4 and IPv6) with remaining lease time |
 | `get_dhcp_reservations()` | fixed address assignments |
+| `get_firewall_rules()` | default policies and every rule with its hit counter |
+| `get_forward_rules()` | firewall openings SRM created for port forwards, DMZ and UPnP |
+| `get_port_forwards()` | port forwards, including those devices opened through UPnP |
+| `get_port_triggers()` | port triggering rules |
+| `get_security_settings()` | SRM access from the internet, automatic openings, auto block |
 
-Firewall rules, Wi-Fi radios, ports and USB storage are next. See the
+Firewall rules, port forwards and security settings carry a `fingerprint`, a hash without hit
+counters, so you can detect configuration changes without comparing field by field.
+
+Wi-Fi radios, ports and USB storage are next. See the
 [changelog](https://github.com/eizedev/aiosynologysrm/blob/main/CHANGELOG.md) for what each
 release adds.
 

@@ -52,6 +52,18 @@ DHCP_LEASES: Final = ReadSpec(
 )
 DHCP_RESERVATIONS: Final = ReadSpec("SYNO.Core.Network.DHCPServer.Reservation", "get", (2,))
 
+FIREWALL_RULES: Final = ReadSpec("SYNO.Core.Security.Firewall.Rules", "get", (2,))
+FIREWALL_HIT_COUNTS: Final = ReadSpec("SYNO.Core.Security.Firewall.Rules.HitCount", "get", (1,))
+FORWARD_RULES: Final = ReadSpec("SYNO.Core.Security.Firewall.Forward.Rules", "get", (1,))
+PORT_FORWARDS: Final = ReadSpec(
+    "SYNO.Core.Network.Router.PortForward", "get", (1,), (("additional", '{"upnp":true}'),)
+)
+PORT_TRIGGERS: Final = ReadSpec("SYNO.Core.Network.Router.PortTrigger", "list", (1,))
+ALLOW_SRM_FROM_WAN: Final = ReadSpec("SYNO.Core.Security.Firewall.AllowSrmFromWan", "get", (1,))
+FIREWALL_CONF: Final = ReadSpec("SYNO.Core.Security.Firewall.Conf", "get", (1,))
+FORWARD_CONF: Final = ReadSpec("SYNO.Core.Security.Firewall.Forward.Conf", "get", (1,))
+AUTO_BLOCK: Final = ReadSpec("SYNO.Core.Security.AutoBlock", "get", (1,))
+
 ALL_READS: Final = (
     SYSTEM_INFO,
     UTILIZATION,
@@ -63,4 +75,13 @@ ALL_READS: Final = (
     DHCP_SERVERS,
     DHCP_LEASES,
     DHCP_RESERVATIONS,
+    FIREWALL_RULES,
+    FIREWALL_HIT_COUNTS,
+    FORWARD_RULES,
+    PORT_FORWARDS,
+    PORT_TRIGGERS,
+    ALLOW_SRM_FROM_WAN,
+    FIREWALL_CONF,
+    FORWARD_CONF,
+    AUTO_BLOCK,
 )

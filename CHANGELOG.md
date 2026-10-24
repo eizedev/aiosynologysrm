@@ -13,6 +13,9 @@ All notable changes to this project are documented here. The format follows
 - `get_dhcp_servers()`, `get_dhcp_leases()` (IPv4 and IPv6, with remaining lease time) and
   `get_dhcp_reservations()`.
 - Fixtures from an MR2200ac running as standalone access point.
+- `get_firewall_rules()` (with hit counters), `get_forward_rules()`, `get_port_forwards()`
+  (including UPnP mappings), `get_port_triggers()` and `get_security_settings()`, each with a
+  `fingerprint` for change detection.
 
 ### Changed
 
