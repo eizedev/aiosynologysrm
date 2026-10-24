@@ -13,7 +13,7 @@
   "sd_dev": [],
   "serial": "XXXXXXXX",
   "time": "2026-10-24 11:20:52",
-  "time_zone": "Amsterdam",
+  "time_zone": "UTC",
   "up_time": "159:35:38",
   "usb_dev": []
 }

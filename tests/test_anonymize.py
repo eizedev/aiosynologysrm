@@ -8,10 +8,12 @@ import json
 import sys
 from pathlib import Path
 from types import ModuleType
+from typing import Any
 
 import pytest
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "anonymize.py"
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
 def _load() -> ModuleType:
@@ -26,14 +28,16 @@ def _load() -> ModuleType:
 
 anonymize = _load()
 
-SAMPLE = {
+SAMPLE: dict[str, Any] = {
     "mac": "a4:83:e7:12:34:56",
     "clid": "00:01:00:01:2c:aa:bb:cc:a4:83:e7:12:34:56",
     "ip": "10.20.30.40",
-    "ip6": "2a00:1234:5678:4200:a683:e7ff:fe12:3456",
-    "other6": "2a00:1234:5678:4200::1",
-    "guest6": "2a00:1234:5678:4207::2",
-    "link": "fe80::a683:e7ff:fe12:3456",
+    "devices": [
+        {"ip6_addr": "2a00:1234:5678:4200:a683:e7ff:fe12:3456"},
+        {"ip6_addr": "2a00:1234:5678:4200::1"},
+        {"ip6_addr": "2a00:1234:5678:4207::2"},
+        {"ip6_addr": "fe80::a683:e7ff:fe12:3456"},
+    ],
     "hostname": "Example-Laptop",
     "serial": "1930ABCDEF",
     "band": "5G",
@@ -43,6 +47,7 @@ SAMPLE = {
 def test_everything_personal_is_replaced() -> None:
     a = anonymize.Anonymizer()
     out = a.walk(SAMPLE)
+    a.check()
     text = json.dumps(out).lower()
     for value in (
         "a4:83:e7",
@@ -59,6 +64,52 @@ def test_everything_personal_is_replaced() -> None:
     assert anonymize.leaks(out, a) == []
 
 
+def test_unclassified_text_keys_are_refused() -> None:
+    a = anonymize.Anonymizer()
+    out = a.walk({"email": "someone@example.org", "comment": "", "count": 3})
+    assert out["email"] == "someone@example.org"  # left alone, so the run must fail
+    with pytest.raises(anonymize.UnknownKeyError, match="email"):
+        a.check()
+
+
+def test_mac_without_separators_and_host_names() -> None:
+    a = anonymize.Anonymizer()
+    out = a.walk({"mac": "A483E7123456", "ntp_server": "time.myhome.example.net", "ip": "x"})
+    assert out["mac"] == "020000000001"
+    assert out["ntp_server"] == "host-1.example"
+    assert out["ip"] == "x"
+    assert anonymize.leaks({"description": "a4:83:e7:12:34:56 and a483e7123456"}, a) == [
+        "a483e7123456",
+        "a4:83:e7:12:34:56",
+    ]
+
+
+def test_ports_countries_and_time_zone_are_neutral() -> None:
+    a = anonymize.Anonymizer()
+    rule = {
+        "src_ip_type": "geo",
+        "src_ip_value": "DE,AT",
+        "dst_ip_type": "single",
+        "dst_ip_value": "10.0.0.5",
+        "dst_port_value": "443,5001-5002,dms_https",
+    }
+    out = a.walk({"rules": [rule], "forwards": [{"sourcePort": 443, "targetPort": True}]})
+    assert out["rules"][0]["src_ip_value"] == "XA,XB"
+    assert out["rules"][0]["dst_port_value"] == "10001,10002-10003,dms_https"
+    assert out["forwards"][0] == {"sourcePort": 10001, "targetPort": True}  # same port, same number
+    assert a.walk({"time_zone": "Amsterdam"}) == {"time_zone": "UTC"}
+
+
+def test_ipv4_placeholders_stay_valid_beyond_one_range() -> None:
+    a = anonymize.Anonymizer()
+    out = [a.walk({"ip": f"10.0.{n // 250}.{n % 250 + 1}"})["ip"] for n in range(254 * 3)]
+    assert all(ipaddress.IPv4Address(ip) for ip in out)
+    assert out[254] == "198.51.100.1"
+    assert out[-1] == "203.0.113.254"
+    with pytest.raises(ValueError, match="more than 762"):
+        a.walk({"ip": "10.9.9.9"})
+
+
 def test_duid_is_replaced_whole_and_keeps_its_length() -> None:
     out = anonymize.Anonymizer().walk(SAMPLE)
     assert out["clid"].count(":") == SAMPLE["clid"].count(":")
@@ -68,16 +119,17 @@ def test_duid_is_replaced_whole_and_keeps_its_length() -> None:
 
 def test_shared_ipv6_prefix_stays_shared_and_hosts_stay_apart() -> None:
     out = anonymize.Anonymizer().walk(SAMPLE)
+    ip6, other6, guest6, link = (d["ip6_addr"] for d in out["devices"])
 
     def network(address: str) -> str:
         return str(ipaddress.IPv6Network(f"{address}/64", strict=False))
 
-    assert network(out["ip6"]) == network(out["other6"]) == "2001:db8:1::/64"
-    assert network(out["guest6"]) == "2001:db8:2::/64"
-    assert out["other6"] == "2001:db8:1::1"
-    assert out["link"].startswith("fe80::")
-    assert out["link"] != SAMPLE["link"]
-    assert out["link"].split(":")[-1] == out["ip6"].split(":")[-1]  # same interface id stays same
+    assert network(ip6) == network(other6) == "2001:db8:1::/64"
+    assert network(guest6) == "2001:db8:2::/64"
+    assert other6 == "2001:db8:1::1"
+    assert link.startswith("fe80::")
+    assert link != SAMPLE["devices"][3]["ip6_addr"]
+    assert link.split(":")[-1] == ip6.split(":")[-1]  # same interface id stays same
 
 
 def test_replacements_are_stable() -> None:
@@ -89,12 +141,21 @@ def test_replacements_are_stable() -> None:
 def test_leak_detection() -> None:
     a = anonymize.Anonymizer()
     a.walk(SAMPLE)
-    assert anonymize.leaks({"note": "seen at 10.20.30.40"}, a) == ["10.20.30.40"]
+    assert anonymize.leaks({"description": "seen at 10.20.30.40"}, a) == ["10.20.30.40"]
     assert anonymize.leaks({"hostname": "example-laptop"}, a) == ["example-laptop"]
-    # a host name that equals an enumeration value is a generic word, not a leak
+    # a host name that equals a kept vocabulary value is a generic word, not a leak
     b = anonymize.Anonymizer()
     b.walk({"hostname": "ipad"})
     assert anonymize.leaks({"dev_type": "ipad"}, b) == []
+
+
+def test_every_fixture_key_is_classified() -> None:
+    # Running the fixtures through again must not hit an unclassified key; a new fixture with a
+    # new text field fails here until the field is sorted into one of the lists.
+    a = anonymize.Anonymizer()
+    for path in sorted(FIXTURES.glob("*/*.json")):
+        a.walk(json.loads(path.read_text(encoding="utf-8")))
+    a.check()
 
 
 def test_main_refuses_and_writes(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -103,6 +164,10 @@ def test_main_refuses_and_writes(tmp_path: Path, capsys: pytest.CaptureFixture[s
     sys.argv = ["anonymize.py", str(source), str(target)]
     assert anonymize.main() == 0
     assert "2a00:1234" not in target.read_text()
+    source.write_text(json.dumps({"email": "someone@example.org"}))
+    target.unlink()
+    assert anonymize.main() == 1
+    assert not target.exists()
     sys.argv = ["anonymize.py"]
     assert anonymize.main() == 2
     capsys.readouterr()

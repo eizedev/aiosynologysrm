@@ -13,13 +13,13 @@
   "sd_dev": [],
   "serial": "XXXXXXXX",
   "time": "2026-10-24 11:21:50",
-  "time_zone": "Amsterdam",
+  "time_zone": "UTC",
   "up_time": "143:35:20",
   "usb_dev": [
     {
       "cls": "disk",
-      "producer": "Samsung Electronics Co., Ltd",
-      "product": "Portable SSD T5"
+      "producer": "producer-1",
+      "product": "product-1"
     }
   ]
 }

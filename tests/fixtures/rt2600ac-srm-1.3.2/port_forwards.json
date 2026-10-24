@@ -4,54 +4,54 @@
       "enabled": true,
       "protocol": "udp",
       "service": "",
-      "sourcePort": 9308,
+      "sourcePort": 10023,
       "targetIP": "192.0.2.17",
-      "targetPort": 9308,
+      "targetPort": 10023,
       "type": "upnp"
     },
     {
       "enabled": true,
       "protocol": "tcp",
       "service": "",
-      "sourcePort": 60964,
+      "sourcePort": 10024,
       "targetIP": "192.0.2.53",
-      "targetPort": 80,
+      "targetPort": 10006,
       "type": "upnp"
     },
     {
       "enabled": true,
       "protocol": "tcp",
       "service": "",
-      "sourcePort": 60965,
+      "sourcePort": 10025,
       "targetIP": "192.0.2.53",
-      "targetPort": 443,
+      "targetPort": 10007,
       "type": "upnp"
     },
     {
       "enabled": true,
       "protocol": "tcp",
       "service": "",
-      "sourcePort": 60966,
+      "sourcePort": 10026,
       "targetIP": "192.0.2.53",
-      "targetPort": 5000,
+      "targetPort": 10009,
       "type": "upnp"
     },
     {
       "enabled": true,
       "protocol": "tcp",
       "service": "",
-      "sourcePort": 60967,
+      "sourcePort": 10027,
       "targetIP": "192.0.2.53",
-      "targetPort": 5001,
+      "targetPort": 10010,
       "type": "upnp"
     },
     {
       "enabled": true,
       "protocol": "tcp",
       "service": "",
-      "sourcePort": 49786,
+      "sourcePort": 10028,
       "targetIP": "192.0.2.49",
-      "targetPort": 6690,
+      "targetPort": 10013,
       "type": "upnp"
     }
   ]
