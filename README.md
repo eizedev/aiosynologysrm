@@ -4,13 +4,13 @@
 
 | PyPI | Python | Release Date | Downloads |
 | ---- | ------ | ------------ | --------- |
-| [![PyPI](https://img.shields.io/pypi/v/aiosynologysrm)](https://pypi.org/project/aiosynologysrm/) | [![Python versions](https://img.shields.io/pypi/pyversions/aiosynologysrm)](https://pypi.org/project/aiosynologysrm/) | [![GitHub release date](https://img.shields.io/github/release-date/eizedev/aiosynologysrm)](https://github.com/eizedev/aiosynologysrm/releases/latest) | [![PyPI downloads](https://img.shields.io/pypi/dm/aiosynologysrm)](https://pypistats.org/packages/aiosynologysrm) |
+| [![PyPI](https://img.shields.io/pypi/v/aiosynologysrm?cacheSeconds=3600)](https://pypi.org/project/aiosynologysrm/) | [![Python versions](https://img.shields.io/pypi/pyversions/aiosynologysrm?cacheSeconds=3600)](https://pypi.org/project/aiosynologysrm/) | [![GitHub release date](https://img.shields.io/github/release-date/eizedev/aiosynologysrm?cacheSeconds=3600)](https://github.com/eizedev/aiosynologysrm/releases/latest) | [![PyPI downloads](https://img.shields.io/pypi/dm/aiosynologysrm?cacheSeconds=3600)](https://pypistats.org/packages/aiosynologysrm) |
 
 <!-- === Badges: Quality & community === -->
 
 | CI | License | Typed | Issues | Discussions |
 | -- | ------- | ----- | ------ | ----------- |
-| [![CI](https://github.com/eizedev/aiosynologysrm/actions/workflows/ci.yml/badge.svg)](https://github.com/eizedev/aiosynologysrm/actions/workflows/ci.yml) | [![License](https://img.shields.io/github/license/eizedev/aiosynologysrm.svg)](https://github.com/eizedev/aiosynologysrm/blob/main/LICENSE) | [![Checked with mypy](https://img.shields.io/badge/mypy-strict-2a6db2)](https://mypy-lang.org/) | [![GitHub issues](https://img.shields.io/github/issues-raw/eizedev/aiosynologysrm)](https://github.com/eizedev/aiosynologysrm/issues) | [![GitHub discussions](https://img.shields.io/badge/Discussions-ask%20and%20share-lightgrey)](https://github.com/eizedev/aiosynologysrm/discussions) |
+| [![CI](https://github.com/eizedev/aiosynologysrm/actions/workflows/ci.yml/badge.svg)](https://github.com/eizedev/aiosynologysrm/actions/workflows/ci.yml) | [![License](https://img.shields.io/github/license/eizedev/aiosynologysrm.svg?cacheSeconds=3600)](https://github.com/eizedev/aiosynologysrm/blob/main/LICENSE) | [![Checked with mypy](https://img.shields.io/badge/mypy-strict-2a6db2)](https://mypy-lang.org/) | [![GitHub issues](https://img.shields.io/github/issues-raw/eizedev/aiosynologysrm?cacheSeconds=3600)](https://github.com/eizedev/aiosynologysrm/issues) | [![GitHub discussions](https://img.shields.io/badge/Discussions-ask%20and%20share-lightgrey)](https://github.com/eizedev/aiosynologysrm/discussions) |
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/eizedev/aiosynologysrm/main/assets/header-dark.svg">
