@@ -42,6 +42,27 @@ looks like "safe to call". On an RT2600ac with SRM 1.3.2 that flag also sits on 
   is "insufficient user privilege" (`SrmPermissionError`) and 117 an internal error, so 117 is a
   plain `SrmApiError`.
 
+## Error codes
+
+The Synology Web API reports errors as numbers. SRM does not document them; the meanings below come
+from the DSM error tables that
+[py-synologydsm-api](https://github.com/mib1185/py-synologydsm-api/blob/master/src/synology_dsm/const.py)
+keeps (DSM and SRM share the Web API framework), plus what SRM itself shows.
+
+| Code | Meaning | Raised as | Checked on SRM |
+|---|---|---|---|
+| 102, 103, 104 | API, method or version does not exist | `SrmUnsupportedError` | 103 seen |
+| 105 | insufficient user privilege | `SrmPermissionError` | no |
+| 106, 107, 119 | session expired, ended by a duplicate login, invalid session id | logged in again once | two logins with the same session name do not cause 107 |
+| 114 | missing required parameters | `SrmApiError` | seen |
+| 117 | unknown internal error | `SrmApiError` | no |
+| 400 | wrong account or password | `SrmAuthenticationError` | no |
+| 403, 404, 406 | two-factor code needed, wrong, or enforced | `SrmTwoFactorRequiredError` | no |
+| 407 | "max tries": blocked by auto block | `SrmBlockedError` | SRM ships a matching login message (`error_max_tries`); not triggered on purpose |
+| 4302 | missing or wrong parameters for this API (not in the DSM tables) | `SrmApiError` | seen |
+
+Any other code is an `SrmApiError` with the number in `code`.
+
 ## Certificates
 
 `ssl` is handed to aiohttp unchanged. Pinning uses `aiohttp.Fingerprint`, the SHA-256 of the

@@ -36,7 +36,9 @@ All notable changes to this project are documented here. The format follows
   before publishing.
 - Issue forms cover every getter and mesh setups.
 - Documentation: what "read only" covers, mesh setups marked as untested, where external addresses
-  come from, the meaning of error codes 105, 117 and 407.
+  come from, the meaning of error codes 105, 117 and 407, a table of all handled error codes with
+  their sources, mesh points (managed only through the main router), `get_wan_status()` as the
+  live alternative to the cached external address.
 
 ## [0.3.0] - 2026-10-24
 
