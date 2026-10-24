@@ -24,6 +24,7 @@ program.
 
 ## Table of contents
 
+- [Why this library?](#why-this-library)
 - [Which devices work?](#which-devices-work)
 - [Quick start](#quick-start)
 - [What it can read](#what-it-can-read)
@@ -31,6 +32,21 @@ program.
 - [Documentation](#documentation)
 - [Contributing](#contributing)
 - [License](#license)
+
+## Why this library?
+
+[synology-srm](https://github.com/aerialls/synology-srm) by aerialls pioneered Python access to
+SRM and is what Home Assistant's built-in integration uses. It is synchronous and has not changed
+since 2023. This library starts fresh for today's needs:
+
+| | aiosynologysrm |
+| --- | --- |
+| **Async** | built on `aiohttp`; shares your application's session, ready for Home Assistant |
+| **Read-only guarantee** | only allowlisted read calls can be sent; nothing can change your router |
+| **Credentials** | sent in the POST body, never in a URL or an error message |
+| **Firmware differences** | checks what each router offers and skips the rest instead of failing |
+| **Mesh and standalone access points** | both are in scope, including telling which device a client is on |
+| **Typed and tested** | strict typing, tests against anonymized answers of real routers |
 
 ## Which devices work?
 
