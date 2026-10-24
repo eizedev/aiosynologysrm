@@ -15,6 +15,7 @@ hide:
 <p class="hero-install"><code>pip install aiosynologysrm</code></p>
 
 [Get started](getting-started.md){ .md-button .md-button--primary }
+[Home Assistant integration](https://ha-synology-srm-router.eize.dev/){ .md-button }
 [Source on GitHub](https://github.com/eizedev/aiosynologysrm){ .md-button }
 
 </div>
@@ -29,6 +30,12 @@ hide:
 - [**Design**](design.md)<br>Read-only by construction, sessions, privacy.
 
 </div>
+
+## Using Home Assistant?
+
+[Synology SRM Router](https://ha-synology-srm-router.eize.dev/) is the Home Assistant integration built on this library: routers and
+access points as devices with load, traffic and WAN state, and device trackers that know which
+router, access point and radio each client uses. It installs from HACS, no code needed.
 
 ## Why this library?
 

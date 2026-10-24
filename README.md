@@ -24,6 +24,10 @@ your network, and over time DHCP, Wi-Fi, firewall and more. It talks to the rout
 It is built as a foundation for integrations such as Home Assistant, but works in any asyncio
 program.
 
+**Using Home Assistant?** [Synology SRM Router](https://ha-synology-srm-router.eize.dev/) is the integration built on this
+library: your routers and access points as devices, WAN state, and device trackers that know which
+router, access point and radio each client uses. Install it from HACS; no code needed.
+
 > **Unofficial.** Not affiliated with, endorsed by or supported by Synology Inc.
 > "Synology" and "SRM" are trademarks of Synology Inc.
 
