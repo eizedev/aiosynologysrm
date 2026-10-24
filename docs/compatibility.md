@@ -47,6 +47,11 @@ This page is the single place that says what this library supports and how sure 
 | `get_dhcp_servers()` | `SYNO.Core.Network.DHCPServer` `get` | 1 | v1 |
 | `get_dhcp_leases()` | `SYNO.Core.Network.DHCPServer.ClientList` `list` (`ifname=all`) | 2 | v2 |
 | `get_dhcp_reservations()` | `SYNO.Core.Network.DHCPServer.Reservation` `get` | 2 | v2 |
+| `get_firewall_rules()` | `SYNO.Core.Security.Firewall.Rules` `get` + `Rules.HitCount` `get` | 2 / 1 | v2 / v1 |
+| `get_forward_rules()` | `SYNO.Core.Security.Firewall.Forward.Rules` `get` | 1 | v1 |
+| `get_port_forwards()` | `SYNO.Core.Network.Router.PortForward` `get` (`additional={"upnp":true}`) | 1 | v1 |
+| `get_port_triggers()` | `SYNO.Core.Network.Router.PortTrigger` `list` | 1 | v1 |
+| `get_security_settings()` | `Firewall.AllowSrmFromWan`, `Firewall.Conf`, `Firewall.Forward.Conf`, `Security.AutoBlock` (`get`) | 1 | v1 |
 
 ## Operating modes
 

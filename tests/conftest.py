@@ -32,10 +32,20 @@ API_FIXTURES: dict[tuple[str, str], tuple[str, int, int]] = {
     ("SYNO.Core.Network.DHCPServer", "get"): ("dhcp_servers", 1, 1),
     ("SYNO.Core.Network.DHCPServer.ClientList", "list"): ("dhcp_leases", 1, 2),
     ("SYNO.Core.Network.DHCPServer.Reservation", "get"): ("dhcp_reservations", 1, 2),
+    ("SYNO.Core.Security.Firewall.Rules", "get"): ("firewall_rules", 2, 2),
+    ("SYNO.Core.Security.Firewall.Rules.HitCount", "get"): ("firewall_hit_counts", 1, 1),
+    ("SYNO.Core.Security.Firewall.Forward.Rules", "get"): ("forward_rules", 1, 1),
+    ("SYNO.Core.Network.Router.PortForward", "get"): ("port_forwards", 1, 1),
+    ("SYNO.Core.Network.Router.PortTrigger", "list"): ("port_triggers", 1, 1),
+    ("SYNO.Core.Security.Firewall.AllowSrmFromWan", "get"): ("allow_srm_from_wan", 1, 1),
+    ("SYNO.Core.Security.Firewall.Conf", "get"): ("firewall_conf", 1, 1),
+    ("SYNO.Core.Security.Firewall.Forward.Conf", "get"): ("forward_conf", 1, 1),
+    ("SYNO.Core.Security.AutoBlock", "get"): ("auto_block", 1, 1),
 }
 # Parameters the real router insists on; without them it answers 4302.
 REQUIRED_PARAMS: dict[tuple[str, str], dict[str, str]] = {
     ("SYNO.Core.Network.DHCPServer.ClientList", "list"): {"ifname": "all"},
+    ("SYNO.Core.Network.Router.PortForward", "get"): {"additional": '{"upnp":true}'},
 }
 
 

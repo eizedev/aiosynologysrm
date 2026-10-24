@@ -22,6 +22,7 @@ from .errors import (
     SrmTwoFactorRequiredError,
     SrmUnsupportedError,
 )
+from .firewall import FirewallRules, ForwardRule, PortForward, PortTrigger, SecuritySettings
 from .models import NetworkDevices, SystemInfo, Utilization
 from .network import (
     DhcpLease,
@@ -36,13 +37,22 @@ from .network import (
 )
 from .reads import (
     ALL_READS,
+    ALLOW_SRM_FROM_WAN,
+    AUTO_BLOCK,
     DHCP_LEASES,
     DHCP_RESERVATIONS,
     DHCP_SERVERS,
     EXTERNAL_ADDRESSES,
+    FIREWALL_CONF,
+    FIREWALL_HIT_COUNTS,
+    FIREWALL_RULES,
+    FORWARD_CONF,
+    FORWARD_RULES,
     IPV6_PREFIXES,
     NETWORK_DEVICES,
     OPERATING_MODE,
+    PORT_FORWARDS,
+    PORT_TRIGGERS,
     SYSTEM_INFO,
     UTILIZATION,
     WAN_STATUS,
@@ -333,6 +343,35 @@ class SrmClient:
     async def get_dhcp_reservations(self) -> tuple[DhcpReservation, ...]:
         """Return the fixed address assignments, IPv4 and IPv6."""
         return reservations_from_api(await self._read_object(DHCP_RESERVATIONS))
+
+    async def get_firewall_rules(self) -> FirewallRules:
+        """Return the default policies and every firewall rule with its hit counter."""
+        rules, hits = await asyncio.gather(
+            self._read_object(FIREWALL_RULES), self.read(FIREWALL_HIT_COUNTS)
+        )
+        return FirewallRules.from_api(rules, hits)
+
+    async def get_forward_rules(self) -> tuple[ForwardRule, ...]:
+        """Return the firewall openings SRM created for port forwards, DMZ and UPnP."""
+        return ForwardRule.list_from_api(await self._read_object(FORWARD_RULES))
+
+    async def get_port_forwards(self) -> tuple[PortForward, ...]:
+        """Return port forwards, including those devices opened through UPnP."""
+        return PortForward.list_from_api(await self._read_object(PORT_FORWARDS))
+
+    async def get_port_triggers(self) -> tuple[PortTrigger, ...]:
+        """Return the port triggering rules."""
+        return PortTrigger.list_from_api(await self._read_object(PORT_TRIGGERS))
+
+    async def get_security_settings(self) -> SecuritySettings:
+        """Return what the internet may reach: SRM access, automatic openings, auto block."""
+        wan, conf, forward, block = await asyncio.gather(
+            self._read_object(ALLOW_SRM_FROM_WAN),
+            self._read_object(FIREWALL_CONF),
+            self._read_object(FORWARD_CONF),
+            self._read_object(AUTO_BLOCK),
+        )
+        return SecuritySettings.from_api(wan, conf, forward, block)
 
     async def _read_object(self, spec: ReadSpec) -> Mapping[str, Any]:
         data = await self.read(spec)

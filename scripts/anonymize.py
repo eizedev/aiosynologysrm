@@ -38,12 +38,34 @@ NAME_KEYS = frozenset(
         "dev_title",
         "clientname",
         "device_name",
+        "service",
     }
 )
 # Fields with a fixed set of values (device type, band, ...); a host name equal to one of these
 # values ("ipad", "tv") is a generic word and not a leak.
 ENUM_KEYS = frozenset(
-    {"dev_type", "connection", "band", "network", "rate_quality", "type", "status", "device"}
+    {
+        "dev_type",
+        "connection",
+        "band",
+        "network",
+        "rate_quality",
+        "type",
+        "status",
+        "device",
+        "protocol",
+        "action",
+        "chain",
+        "ip_version",
+        "profile",
+        "created_by",
+        "src_ip_type",
+        "dst_ip_type",
+        "src_port_type",
+        "dst_port_type",
+        "in_interface_type",
+        "out_interface_type",
+    }
 )
 SECRET_KEYS = re.compile(r"serial|(^|_)sn$|pass|psk|token|secret|(^|_)key$", re.IGNORECASE)
 
