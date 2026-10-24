@@ -36,8 +36,8 @@ uv run pytest --cov
   reads. Pull requests that add a call which changes router settings are not accepted.
 - **Every new API needs a fixture** from a real router, anonymized with
   `python scripts/anonymize.py <raw.json> tests/fixtures/<model>-srm-<version>/<name>.json`.
-  The script refuses to write a file that still contains an original value; check the output by
-  eye as well before committing.
+  The script refuses to write anything when a text field is not classified yet (add it to one of
+  its lists) or an original value is left; check the output by eye as well before committing.
 - **Units only when verified.** Name a field `_percent`, `_kib`, `_mbps` etc. only if you checked
   the unit on a router; otherwise keep SRM's number and end the name in `_raw`.
 - Update [docs/compatibility.md](docs/compatibility.md) and [CHANGELOG.md](CHANGELOG.md).

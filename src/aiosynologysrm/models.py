@@ -1,19 +1,31 @@
 """Typed views of SRM responses.
 
 Parsing is tolerant: a missing or oddly typed field becomes ``None`` instead of an exception,
-because SRM models and firmware versions differ. Every model keeps the untouched payload in
-``raw`` for fields this library does not map yet. Units are documented only where they were
-verified against a router; ``*_raw`` fields are passed through as SRM reports them.
+because SRM models and firmware versions differ. Every model keeps the payload it was built from
+in ``raw``, for fields this library does not map yet: a read-only copy that is left out of
+equality, hash and ``repr``. Models are built by their ``from_api`` or ``list_from_api`` class
+methods. Units are documented only where they were verified against a router; ``*_raw`` fields
+are passed through as SRM reports them.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any
 
-from ._parse import normalize_mac, to_bool, to_int, to_list, to_mapping, to_str, to_timedelta
+from ._parse import (
+    frozen,
+    normalize_mac,
+    raw_field,
+    to_bool,
+    to_int,
+    to_list,
+    to_mapping,
+    to_str,
+    to_timedelta,
+)
 
 
 def _uptime(value: Any) -> timedelta | None:
@@ -44,7 +56,7 @@ class SystemInfo:
     ram_mb: int | None
     uptime: timedelta | None
     time_zone: str | None
-    raw: Mapping[str, Any] = field(repr=False)
+    raw: Mapping[str, Any] = raw_field()
 
     @classmethod
     def from_api(cls, data: Mapping[str, Any]) -> SystemInfo:
@@ -61,7 +73,7 @@ class SystemInfo:
             ram_mb=to_int(data.get("ram_size")),
             uptime=_uptime(data.get("up_time")),
             time_zone=to_str(data.get("time_zone")),
-            raw=data,
+            raw=frozen(data),
         )
 
 
@@ -72,6 +84,7 @@ class InterfaceTraffic:
     device: str
     rx_raw: int | None
     tx_raw: int | None
+    raw: Mapping[str, Any] = raw_field()
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,7 +107,7 @@ class Utilization:
     memory_buffer_kib: int | None
     swap_usage_percent: int | None
     interfaces: tuple[InterfaceTraffic, ...]
-    raw: Mapping[str, Any] = field(repr=False)
+    raw: Mapping[str, Any] = raw_field()
 
     @property
     def cpu_total_percent(self) -> int | None:
@@ -112,7 +125,10 @@ class Utilization:
         network = to_list(data.get("network"))
         interfaces = tuple(
             InterfaceTraffic(
-                device=item["device"], rx_raw=to_int(item.get("rx")), tx_raw=to_int(item.get("tx"))
+                device=item["device"],
+                rx_raw=to_int(item.get("rx")),
+                tx_raw=to_int(item.get("tx")),
+                raw=frozen(item),
             )
             for item in network
             if isinstance(item, Mapping) and isinstance(item.get("device"), str)
@@ -131,7 +147,7 @@ class Utilization:
             memory_buffer_kib=to_int(memory.get("buffer")),
             swap_usage_percent=to_int(memory.get("swap_usage")),
             interfaces=interfaces,
-            raw=data,
+            raw=frozen(data),
         )
 
 
@@ -165,7 +181,7 @@ class NetworkDevice:
     device_type: str | None
     guest: bool | None
     blocked: bool | None
-    raw: Mapping[str, Any] = field(repr=False)
+    raw: Mapping[str, Any] = raw_field()
 
     @classmethod
     def from_api(cls, item: Mapping[str, Any]) -> NetworkDevice | None:
@@ -202,7 +218,7 @@ class NetworkDevice:
             device_type=to_str(item.get("dev_type")),
             guest=to_bool(item.get("is_guest")),
             blocked=to_bool(item.get("is_baned")),
-            raw=item,
+            raw=frozen(item),
         )
 
 
@@ -213,6 +229,7 @@ class NetworkDevices:
     devices: tuple[NetworkDevice, ...]
     truncated: bool
     """SRM reports that its device list hit the maximum length and is incomplete."""
+    raw: Mapping[str, Any] = raw_field()
 
     @classmethod
     def from_api(cls, data: Mapping[str, Any]) -> NetworkDevices:
@@ -222,4 +239,5 @@ class NetworkDevices:
         return cls(
             devices=tuple(d for d in parsed if d is not None),
             truncated=to_bool(data.get("exceed_dev_list_max")) is True,
+            raw=frozen(data),
         )

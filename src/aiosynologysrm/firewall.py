@@ -1,7 +1,9 @@
 """Typed views of firewall, port forwarding and related security settings.
 
-Every collection has a ``fingerprint``: a hash over its content without hit counters, so a
-caller can tell that the configuration changed without comparing it field by field.
+:class:`FirewallRules` and :class:`SecuritySettings` have a ``fingerprint``: a hash over their
+content without hit counters, so a caller can tell that the configuration changed without
+comparing it field by field. For any other list, :func:`fingerprint` over the items' ``raw``
+gives the same kind of hash.
 """
 
 from __future__ import annotations
@@ -9,10 +11,10 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from typing import Any
 
-from ._parse import normalize_mac, to_bool, to_int, to_list, to_mapping, to_str
+from ._parse import frozen, normalize_mac, raw_field, to_bool, to_int, to_list, to_mapping, to_str
 
 
 def fingerprint(payloads: Iterable[Mapping[str, Any]], ignore: frozenset[str] = frozenset()) -> str:
@@ -69,7 +71,7 @@ class FirewallRule:
     hits: int | None
     """Packets matched since the counters were last reset, summed over the kernel rules SRM
     creates for this rule; ``None`` if the router reported no counter for it."""
-    raw: Mapping[str, Any] = field(repr=False)
+    raw: Mapping[str, Any] = raw_field()
 
     @classmethod
     def from_api(cls, item: Mapping[str, Any], hits: Mapping[int, int]) -> FirewallRule:
@@ -93,7 +95,7 @@ class FirewallRule:
             ),
             logged=to_bool(item.get("logged")),
             hits=hits.get(ui_id) if ui_id is not None else None,
-            raw=item,
+            raw=frozen(item),
         )
 
 
@@ -101,9 +103,11 @@ class FirewallRule:
 class FirewallRules:
     """The firewall: default policies for traffic from the internet, and the rule list."""
 
-    default_policy: Mapping[str, str]
+    default_policy: Mapping[str, str] = field(hash=False)
     """For example ``{"ipv4_wan_to_lan": "deny", "ipv4_wan_to_srm": "deny", ...}``."""
     rules: tuple[FirewallRule, ...]
+    raw: Mapping[str, Any] = raw_field()
+    """The ``Rules`` answer; hit counters are in each rule's ``hits``."""
 
     @property
     def fingerprint(self) -> str:
@@ -126,7 +130,9 @@ class FirewallRules:
         }
         items = (i for i in to_list(rules.get("rules")) if isinstance(i, Mapping))
         return cls(
-            default_policy=policy, rules=tuple(FirewallRule.from_api(i, hits) for i in items)
+            default_policy=frozen(policy),
+            rules=tuple(FirewallRule.from_api(i, hits) for i in items),
+            raw=frozen(rules),
         )
 
 
@@ -142,7 +148,7 @@ class ForwardRule:
     source: Endpoint
     destination: Endpoint
     hits: int | None
-    raw: Mapping[str, Any] = field(repr=False)
+    raw: Mapping[str, Any] = raw_field()
 
     @classmethod
     def list_from_api(cls, data: Mapping[str, Any]) -> tuple[ForwardRule, ...]:
@@ -156,7 +162,7 @@ class ForwardRule:
                 source=Endpoint.from_api(item, "src"),
                 destination=Endpoint.from_api(item, "dst"),
                 hits=to_int(item.get("hit_count")),
-                raw=item,
+                raw=frozen(item),
             )
             for item in to_list(data.get("rules"))
             if isinstance(item, Mapping)
@@ -176,7 +182,7 @@ class PortForward:
     target_port: str | None
     upnp: bool
     """Opened by a device on the network through UPnP rather than configured by hand."""
-    raw: Mapping[str, Any] = field(repr=False)
+    raw: Mapping[str, Any] = raw_field()
 
     @classmethod
     def list_from_api(cls, data: Mapping[str, Any]) -> tuple[PortForward, ...]:
@@ -190,7 +196,7 @@ class PortForward:
                 target_address=to_str(item.get("targetIP")),
                 target_port=_port(item.get("targetPort")),
                 upnp=item.get("type") == "upnp",
-                raw=item,
+                raw=frozen(item),
             )
             for item in to_list(data.get("rules"))
             if isinstance(item, Mapping)
@@ -209,7 +215,7 @@ class PortTrigger:
     mac: str | None
     address: str | None
     status: str | None
-    raw: Mapping[str, Any] = field(repr=False)
+    raw: Mapping[str, Any] = raw_field()
 
     @classmethod
     def list_from_api(cls, data: Mapping[str, Any]) -> tuple[PortTrigger, ...]:
@@ -224,7 +230,7 @@ class PortTrigger:
                 mac=normalize_mac(item.get("mac")),
                 address=to_str(item.get("ipaddr")),
                 status=to_str(item.get("status")),
-                raw=item,
+                raw=frozen(item),
             )
             for item in to_list(data.get("configs"))
             if isinstance(item, Mapping)
@@ -247,11 +253,14 @@ class SecuritySettings:
     auto_block_within_minutes: int | None
     auto_block_expire_days: int | None
     """``0`` means blocked addresses never expire."""
+    raw: Mapping[str, Any] = raw_field()
+    """The four answers, keyed ``allow_srm_from_wan``, ``firewall_conf``, ``forward_conf`` and
+    ``auto_block``."""
 
     @property
     def fingerprint(self) -> str:
         """Hash of all settings; changes when any of them changes."""
-        values = {name: getattr(self, name) for name in self.__dataclass_fields__}
+        values = {f.name: getattr(self, f.name) for f in fields(self) if f.compare}
         return fingerprint([values])
 
     @classmethod
@@ -273,6 +282,14 @@ class SecuritySettings:
             auto_block_attempts=to_int(auto_block.get("attempts")),
             auto_block_within_minutes=to_int(auto_block.get("within_mins")),
             auto_block_expire_days=to_int(auto_block.get("expire_day")),
+            raw=frozen(
+                {
+                    "allow_srm_from_wan": allow_srm_from_wan,
+                    "firewall_conf": firewall_conf,
+                    "forward_conf": forward_conf,
+                    "auto_block": auto_block,
+                }
+            ),
         )
 
 

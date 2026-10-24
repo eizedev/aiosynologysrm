@@ -20,6 +20,14 @@ All notable changes to this project are documented here. The format follows
 
 - **Breaking:** `verify_ssl` is replaced by `ssl` (`bool`, `ssl.SSLContext` or
   `aiohttp.Fingerprint`). `verify_ssl=False` becomes `ssl=False`.
+- **Breaking:** every model has `raw`, a read-only copy of its payload that is left out of
+  equality, hash and `repr`; models are hashable. Models built from several answers
+  (`WifiRadio`, `SecuritySettings`) key their `raw` by answer.
+- **Breaking:** `leases_from_api`, `reservations_from_api` and `radios_from_api` are
+  `DhcpLease.list_from_api`, `DhcpReservation.list_from_api` and `WifiRadio.list_from_api`.
+- The fixture anonymizer is an allowlist: a text field it does not know stops it. It also
+  replaces MAC addresses without separators, host names, port numbers, country codes and the
+  time zone; fixtures are regenerated accordingly.
 - A two-factor code is sent with the first login only. A later login needs a fresh code and raises
   `SrmTwoFactorRequiredError`; unattended use needs an account without two-factor authentication.
 - The login version is chosen from the router's catalog (3 or 2) instead of always 3.
@@ -35,6 +43,7 @@ All notable changes to this project are documented here. The format follows
   firewall rules and security settings do. Use `fingerprint()` for the others.
 - The source distribution includes `scripts/` and `docs/`, so its tests run.
 - Concurrent first calls no longer fetch the API catalog twice.
+- The anonymizer produced invalid IPv4 placeholders beyond 508 addresses.
 
 ## [0.2.0] - 2026-10-24
 

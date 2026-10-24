@@ -3,11 +3,21 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any
 
-from ._parse import normalize_mac, to_bool, to_int, to_list, to_mapping, to_str, to_timedelta
+from ._parse import (
+    frozen,
+    normalize_mac,
+    raw_field,
+    to_bool,
+    to_int,
+    to_list,
+    to_mapping,
+    to_str,
+    to_timedelta,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,41 +37,44 @@ class WifiRadio:
     wireless_mode: str | None
     auto_switch_dfs: bool | None
     bssid: str | None
+    raw: Mapping[str, Any] = raw_field()
+    """``{"setting": ..., "status": ...}``: the radio's entries from both answers."""
 
     @property
     def automatic_channel(self) -> bool:
         """Whether the router chooses the channel itself."""
         return self.configured_channel == 0
 
-
-def radios_from_api(
-    settings: Mapping[str, Any], status: Mapping[str, Any]
-) -> tuple[WifiRadio, ...]:
-    """Join ``Wifi.Radio.Setting`` and ``Wifi.Radio.Status`` by radio type."""
-    live = {
-        to_str(item.get("radio_type")): item
-        for item in to_list(status.get("status_list"))
-        if isinstance(item, Mapping)
-    }
-    out = []
-    for item in to_list(settings.get("radio_list")):
-        if not isinstance(item, Mapping) or not to_str(item.get("radio_type")):
-            continue
-        radio = item["radio_type"]
-        state = to_mapping(live.get(radio))
-        out.append(
-            WifiRadio(
-                radio_type=radio,
-                channel=to_int(state.get("channel")),
-                configured_channel=to_int(item.get("channel")),
-                channel_width=to_str(item.get("channel_width")),
-                transmit_power=to_str(item.get("transmit_power")),
-                wireless_mode=to_str(item.get("wireless_mode")),
-                auto_switch_dfs=to_bool(item.get("allow_auto_switch_dfs")),
-                bssid=normalize_mac(state.get("bssid")),
+    @classmethod
+    def list_from_api(
+        cls, settings: Mapping[str, Any], status: Mapping[str, Any]
+    ) -> tuple[WifiRadio, ...]:
+        """Join ``Wifi.Radio.Setting`` and ``Wifi.Radio.Status`` by radio type."""
+        live = {
+            to_str(item.get("radio_type")): item
+            for item in to_list(status.get("status_list"))
+            if isinstance(item, Mapping)
+        }
+        out = []
+        for item in to_list(settings.get("radio_list")):
+            if not isinstance(item, Mapping) or not to_str(item.get("radio_type")):
+                continue
+            radio = item["radio_type"]
+            state = to_mapping(live.get(radio))
+            out.append(
+                cls(
+                    radio_type=radio,
+                    channel=to_int(state.get("channel")),
+                    configured_channel=to_int(item.get("channel")),
+                    channel_width=to_str(item.get("channel_width")),
+                    transmit_power=to_str(item.get("transmit_power")),
+                    wireless_mode=to_str(item.get("wireless_mode")),
+                    auto_switch_dfs=to_bool(item.get("allow_auto_switch_dfs")),
+                    bssid=normalize_mac(state.get("bssid")),
+                    raw=frozen({"setting": item, "status": state}),
+                )
             )
-        )
-    return tuple(out)
+        return tuple(out)
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +95,7 @@ class WifiClient:
     bytes_received: int | None
     bytes_sent: int | None
     """Counters since the client connected, as seen by the router."""
+    raw: Mapping[str, Any] = raw_field()
 
     @classmethod
     def list_from_api(cls, data: Mapping[str, Any]) -> tuple[WifiClient, ...]:
@@ -103,6 +117,7 @@ class WifiClient:
                     connected_for=to_timedelta(seconds=uptime),
                     bytes_received=to_int(item.get("bytes_rx")),
                     bytes_sent=to_int(item.get("bytes_tx")),
+                    raw=frozen(item),
                 )
             )
         return tuple(out)
@@ -121,6 +136,8 @@ class EthernetPort:
     linked: bool | None
     speed_mbps: int | None
     """``0`` when there is no link."""
+    raw: Mapping[str, Any] = raw_field()
+    """The port's entry; the node it belongs to is not included."""
 
     @classmethod
     def list_from_api(cls, data: Mapping[str, Any]) -> tuple[EthernetPort, ...]:
@@ -132,6 +149,7 @@ class EthernetPort:
                 port=port["port"],
                 linked=to_bool(port.get("has_link")),
                 speed_mbps=to_int(port.get("link_speed")),
+                raw=frozen(port),
             )
             for node in to_list(data.get("nodes"))
             if isinstance(node, Mapping)
@@ -159,7 +177,7 @@ class MeshNode:
     connected_devices: int | None
     rx_rate_raw: int | None
     tx_rate_raw: int | None
-    raw: Mapping[str, Any] = field(repr=False)
+    raw: Mapping[str, Any] = raw_field()
 
     @property
     def is_main_router(self) -> bool:
@@ -187,7 +205,7 @@ class MeshNode:
                     connected_devices=to_int(item.get("connected_devices")),
                     rx_rate_raw=to_int(item.get("current_rate_rx")),
                     tx_rate_raw=to_int(item.get("current_rate_tx")),
-                    raw=item,
+                    raw=frozen(item),
                 )
             )
         return tuple(out)
@@ -203,6 +221,7 @@ class UsbVolume:
     total_bytes: int | None
     free_bytes: int | None
     read_only: bool | None
+    raw: Mapping[str, Any] = raw_field()
 
     @property
     def used_percent(self) -> float | None:
@@ -222,6 +241,7 @@ class UsbVolume:
                 total_bytes=to_int(item.get("size_total_byte")),
                 free_bytes=to_int(item.get("size_free_byte")),
                 read_only=to_bool(item.get("readonly")),
+                raw=frozen(item),
             )
             for item in to_list(data.get("volumes"))
             if isinstance(item, Mapping)

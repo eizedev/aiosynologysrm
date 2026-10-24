@@ -12,6 +12,8 @@ from hypothesis import strategies as st
 
 import aiosynologysrm
 from aiosynologysrm import (
+    DhcpLease,
+    DhcpReservation,
     DhcpServer,
     EthernetPort,
     ExternalAddress,
@@ -33,10 +35,9 @@ from aiosynologysrm import (
     Utilization,
     WanStatus,
     WifiClient,
+    WifiRadio,
 )
 from aiosynologysrm._parse import to_int, to_timedelta
-from aiosynologysrm.hardware import radios_from_api
-from aiosynologysrm.network import leases_from_api, reservations_from_api
 from aiosynologysrm.reads import ALL_READS, READ_METHODS
 
 from .conftest import FakeSrm
@@ -118,14 +119,14 @@ PARSERS: list[Callable[[dict[str, Any]], object]] = [
     ExternalAddress.list_from_api,
     Ipv6Prefix.list_from_api,
     DhcpServer.list_from_api,
-    leases_from_api,
-    reservations_from_api,
+    DhcpLease.list_from_api,
+    DhcpReservation.list_from_api,
     lambda d: FirewallRules.from_api(d, d.get("data")),
     ForwardRule.list_from_api,
     PortForward.list_from_api,
     PortTrigger.list_from_api,
     lambda d: SecuritySettings.from_api(d, d, d, d),
-    lambda d: radios_from_api(d, d),
+    lambda d: WifiRadio.list_from_api(d, d),
     WifiClient.list_from_api,
     EthernetPort.list_from_api,
     MeshNode.list_from_api,

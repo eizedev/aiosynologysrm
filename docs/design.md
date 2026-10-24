@@ -62,9 +62,12 @@ requests (`max_concurrency`, default 2) so it does not swamp the router.
 - Exceptions carry the error code and API name, never the URL, the password, the session id or
   the response body.
 - Test fixtures are real router answers made anonymous by
-  [`scripts/anonymize.py`](../scripts/anonymize.py): MAC addresses, IP addresses, host names,
-  SSIDs and serial numbers are replaced, and the script refuses to write a file if any original
-  value is left.
+  [`scripts/anonymize.py`](../scripts/anonymize.py). It works as an allowlist: every text field
+  is either fixed vocabulary that stays, an address (MAC, IPv4, IPv6, DUID, host name) that gets
+  a stable placeholder, or a name that is replaced as a whole. An unclassified field stops the
+  script. Port numbers, country codes and the time zone are replaced too, because together they
+  would describe one real network. The script refuses to write anything if an original value is
+  left. What stays is the device type of each client and the firmware, which the tests need.
 
 ## Units
 

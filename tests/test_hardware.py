@@ -8,8 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from aiosynologysrm import EthernetPort, MeshNode, SrmClient, UsbVolume, WifiClient
-from aiosynologysrm.hardware import radios_from_api
+from aiosynologysrm import EthernetPort, MeshNode, SrmClient, UsbVolume, WifiClient, WifiRadio
 
 from .conftest import MR2200AC, RT2600AC, FakeSrm, load, responses
 
@@ -84,7 +83,7 @@ async def test_access_point_has_no_usb_storage(fake: FakeSrm, make_client: MakeC
 
 @pytest.mark.parametrize("folder", [RT2600AC, MR2200AC])
 def test_every_fixture_parses(folder: Path) -> None:
-    radios_from_api(
+    WifiRadio.list_from_api(
         load(folder / "wifi_radio_settings.json"), load(folder / "wifi_radio_status.json")
     )
     WifiClient.list_from_api(load(folder / "wifi_clients.json"))
@@ -94,8 +93,8 @@ def test_every_fixture_parses(folder: Path) -> None:
 
 
 def test_odd_input() -> None:
-    assert radios_from_api({"radio_list": [{"channel": 1}, 3]}, {}) == ()
-    radio = radios_from_api({"radio_list": [{"radio_type": "5G"}]}, {})[0]
+    assert WifiRadio.list_from_api({"radio_list": [{"channel": 1}, 3]}, {}) == ()
+    radio = WifiRadio.list_from_api({"radio_list": [{"radio_type": "5G"}]}, {})[0]
     assert radio.channel is None
     assert radio.bssid is None
     assert WifiClient.list_from_api({"device_list": [{"mac_address": "x"}, 4]}) == ()

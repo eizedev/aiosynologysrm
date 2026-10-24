@@ -1,6 +1,6 @@
 """Typed views of WAN, IPv6 and DHCP responses.
 
-Same rules as :mod:`aiosynologysrm.models`: tolerant parsing, untouched payload in ``raw``,
+Same rules as :mod:`aiosynologysrm.models`: tolerant parsing, the payload in a read-only ``raw``,
 units only where verified.
 """
 
@@ -8,11 +8,21 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any, Literal
 
-from ._parse import normalize_mac, to_bool, to_int, to_list, to_mapping, to_str, to_timedelta
+from ._parse import (
+    frozen,
+    normalize_mac,
+    raw_field,
+    to_bool,
+    to_int,
+    to_list,
+    to_mapping,
+    to_str,
+    to_timedelta,
+)
 
 Family = Literal["ipv4", "ipv6"]
 FAMILIES: tuple[Family, Family] = ("ipv4", "ipv6")
@@ -41,7 +51,7 @@ class OperatingMode:
     mode: str | None
     supported_modes: tuple[str, ...]
     wireless_repeating: bool | None
-    raw: Mapping[str, Any] = field(repr=False)
+    raw: Mapping[str, Any] = raw_field()
 
     @property
     def is_router(self) -> bool:
@@ -56,7 +66,7 @@ class OperatingMode:
             mode=to_str(data.get("net_topology")),
             supported_modes=tuple(supported.split()),
             wireless_repeating=to_bool(data.get("wireless_repeating")),
-            raw=data,
+            raw=frozen(data),
         )
 
 
@@ -69,6 +79,7 @@ class WanConnection:
     interface: str | None
     address: str | None
     pppoe: bool | None
+    raw: Mapping[str, Any] = raw_field()
 
     @classmethod
     def from_api(cls, data: Mapping[str, Any]) -> WanConnection:
@@ -78,6 +89,7 @@ class WanConnection:
             interface=to_str(data.get("ifname")),
             address=to_str(data.get("ip")),
             pppoe=to_bool(data.get("pppoe")),
+            raw=frozen(data),
         )
 
 
@@ -87,7 +99,7 @@ class WanStatus:
 
     ipv4: WanConnection | None
     ipv6: WanConnection | None
-    raw: Mapping[str, Any] = field(repr=False)
+    raw: Mapping[str, Any] = raw_field()
 
     @classmethod
     def from_api(cls, data: Mapping[str, Any]) -> WanStatus:
@@ -100,7 +112,7 @@ class WanStatus:
             ipv6=WanConnection.from_api(parts["ipv6"])
             if isinstance(parts["ipv6"], Mapping)
             else None,
-            raw=data,
+            raw=frozen(data),
         )
 
 
@@ -112,6 +124,7 @@ class ExternalAddress:
     ipv6: str | None
     kind: str | None
     """SRM's ``type``, ``"WAN"`` for the main connection."""
+    raw: Mapping[str, Any] = raw_field()
 
     @classmethod
     def from_api(cls, item: Mapping[str, Any]) -> ExternalAddress:
@@ -120,6 +133,7 @@ class ExternalAddress:
             ipv4=to_str(item.get("ip")),
             ipv6=to_str(item.get("ipv6")),
             kind=to_str(item.get("type")),
+            raw=frozen(item),
         )
 
     @classmethod
@@ -141,6 +155,7 @@ class Ipv6Prefix:
     wan_interface: str | None
     valid_lifetime: timedelta | None
     preferred_lifetime: timedelta | None
+    raw: Mapping[str, Any] = raw_field()
 
     @classmethod
     def list_from_api(cls, data: Mapping[str, Any]) -> tuple[Ipv6Prefix, ...]:
@@ -157,6 +172,7 @@ class Ipv6Prefix:
                     wan_interface=to_str(item.get("wan")),
                     valid_lifetime=to_timedelta(seconds=valid),
                     preferred_lifetime=to_timedelta(seconds=preferred),
+                    raw=frozen(item),
                 )
             )
         return tuple(out)
@@ -175,7 +191,7 @@ class DhcpPool:
     """IPv4: prefix length as text (``"24"``); IPv6: the prefix itself."""
     lease_time: timedelta | None
     """IPv4 lease time, IPv6 valid lifetime."""
-    raw: Mapping[str, Any] = field(repr=False)
+    raw: Mapping[str, Any] = raw_field()
 
     @classmethod
     def from_api(cls, data: Mapping[str, Any]) -> DhcpPool:
@@ -192,7 +208,7 @@ class DhcpPool:
             dns=tuple(d for d in (to_str(data.get("dns1")), to_str(data.get("dns2"))) if d),
             prefix=str(prefix) if isinstance(prefix, (int, str)) and prefix != "" else None,
             lease_time=to_timedelta(seconds=lease),
-            raw=data,
+            raw=frozen(data),
         )
 
 
@@ -203,6 +219,7 @@ class DhcpServer:
     interface: str
     ipv4: DhcpPool | None
     ipv6: DhcpPool | None
+    raw: Mapping[str, Any] = raw_field()
 
     @classmethod
     def list_from_api(cls, data: Mapping[str, Any]) -> tuple[DhcpServer, ...]:
@@ -217,6 +234,7 @@ class DhcpServer:
                     interface=item["ifname"],
                     ipv4=DhcpPool.from_api(v4) if isinstance(v4, Mapping) else None,
                     ipv6=DhcpPool.from_api(v6) if isinstance(v6, Mapping) else None,
+                    raw=frozen(item),
                 )
             )
         return tuple(out)
@@ -239,11 +257,37 @@ class DhcpLease:
     expires_in: timedelta | None
     """Remaining lease time, ``None`` for permanent leases or an unknown format."""
     expire_raw: str | None
+    raw: Mapping[str, Any] = raw_field()
 
     @property
     def mac(self) -> str | None:
         """The client's MAC address, known for IPv4 leases."""
         return normalize_mac(self.client_id) if self.family == "ipv4" else None
+
+    @classmethod
+    def list_from_api(cls, data: Mapping[str, Any]) -> tuple[DhcpLease, ...]:
+        """Build leases of both families from the ``data`` member."""
+        groups = to_mapping(data.get("clientList"))
+        out = []
+        for family in FAMILIES:
+            for item in to_list(groups.get(family)):
+                if not isinstance(item, Mapping) or not to_str(item.get("ip")):
+                    continue
+                expire = to_str(item.get("expire"))
+                out.append(
+                    cls(
+                        family=family,
+                        address=item["ip"],
+                        client_id=to_str(item.get("clid")),
+                        hostname=to_str(item.get("hostname")),
+                        interface=to_str(item.get("ifname")),
+                        permanent=expire == "unlimited",
+                        expires_in=_remaining(expire),
+                        expire_raw=expire,
+                        raw=frozen(item),
+                    )
+                )
+        return tuple(out)
 
 
 @dataclass(frozen=True, slots=True)
@@ -254,48 +298,26 @@ class DhcpReservation:
     address: str
     client_id: str | None
     hostname: str | None
+    raw: Mapping[str, Any] = raw_field()
 
     @property
     def mac(self) -> str | None:
         """The client's MAC address, known for IPv4 reservations."""
         return normalize_mac(self.client_id) if self.family == "ipv4" else None
 
-
-def leases_from_api(data: Mapping[str, Any]) -> tuple[DhcpLease, ...]:
-    """Build leases of both families from the ``data`` member."""
-    groups = to_mapping(data.get("clientList"))
-    out = []
-    for family in FAMILIES:
-        for item in to_list(groups.get(family)):
-            if not isinstance(item, Mapping) or not to_str(item.get("ip")):
-                continue
-            expire = to_str(item.get("expire"))
-            out.append(
-                DhcpLease(
-                    family=family,
-                    address=item["ip"],
-                    client_id=to_str(item.get("clid")),
-                    hostname=to_str(item.get("hostname")),
-                    interface=to_str(item.get("ifname")),
-                    permanent=expire == "unlimited",
-                    expires_in=_remaining(expire),
-                    expire_raw=expire,
-                )
+    @classmethod
+    def list_from_api(cls, data: Mapping[str, Any]) -> tuple[DhcpReservation, ...]:
+        """Build reservations of both families from the ``data`` member."""
+        groups = to_mapping(data.get("reservationList"))
+        return tuple(
+            cls(
+                family=family,
+                address=item["ip"],
+                client_id=to_str(item.get("clid")),
+                hostname=to_str(item.get("hostname")),
+                raw=frozen(item),
             )
-    return tuple(out)
-
-
-def reservations_from_api(data: Mapping[str, Any]) -> tuple[DhcpReservation, ...]:
-    """Build reservations of both families from the ``data`` member."""
-    groups = to_mapping(data.get("reservationList"))
-    return tuple(
-        DhcpReservation(
-            family=family,
-            address=item["ip"],
-            client_id=to_str(item.get("clid")),
-            hostname=to_str(item.get("hostname")),
+            for family in FAMILIES
+            for item in to_list(groups.get(family))
+            if isinstance(item, Mapping) and to_str(item.get("ip"))
         )
-        for family in FAMILIES
-        for item in to_list(groups.get(family))
-        if isinstance(item, Mapping) and to_str(item.get("ip"))
-    )
