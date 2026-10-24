@@ -123,11 +123,15 @@ asyncio.run(main())
 | `get_port_forwards()` | port forwards, including those devices opened through UPnP |
 | `get_port_triggers()` | port triggering rules |
 | `get_security_settings()` | SRM access from the internet, automatic openings, auto block |
+| `get_wifi_radios()` | each Wi-Fi radio: channel in use, automatic or fixed, width, power, BSSID |
+| `get_wifi_clients()` | signal, link rate, connection time and traffic of each Wi-Fi client |
+| `get_ethernet_ports()` | link state and speed of every Ethernet port |
+| `get_mesh_nodes()` | the router and its mesh points with status and client count |
+| `get_usb_volumes()` | USB storage: file system, size, free space |
 
 Firewall rules, port forwards and security settings carry a `fingerprint`, a hash without hit
 counters, so you can detect configuration changes without comparing field by field.
-
-Wi-Fi radios, ports and USB storage are next. See the
+ See the
 [changelog](https://github.com/eizedev/aiosynologysrm/blob/main/CHANGELOG.md) for what each
 release adds.
 

@@ -51,6 +51,11 @@ This page is the single place that says what this library supports and how sure 
 | `get_forward_rules()` | `SYNO.Core.Security.Firewall.Forward.Rules` `get` | 1 | v1 |
 | `get_port_forwards()` | `SYNO.Core.Network.Router.PortForward` `get` (`additional={"upnp":true}`) | 1 | v1 |
 | `get_port_triggers()` | `SYNO.Core.Network.Router.PortTrigger` `list` | 1 | v1 |
+| `get_wifi_radios()` | `SYNO.Wifi.Radio.Setting` + `SYNO.Wifi.Radio.Status` `get` | 1 | v1 |
+| `get_wifi_clients()` | `SYNO.Wifi.Device` `get` | 1 | v1 |
+| `get_ethernet_ports()` | `SYNO.Mesh.Network.EthPortInfo` `get` | 1 | v1 |
+| `get_mesh_nodes()` | `SYNO.Mesh.Node.List` `get` | 4 | v4 |
+| `get_usb_volumes()` | `SYNO.Core.Storage.Volume` `list` (`limit=-1&offset=0&location=external`) | 1 | v1 |
 | `get_security_settings()` | `Firewall.AllowSrmFromWan`, `Firewall.Conf`, `Firewall.Forward.Conf`, `Security.AutoBlock` (`get`) | 1 | v1 |
 
 ## Operating modes
