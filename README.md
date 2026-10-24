@@ -111,9 +111,17 @@ asyncio.run(main())
 | `get_system_info()` | model, firmware, CPU, RAM, uptime |
 | `get_utilization()` | CPU and memory load, traffic per interface |
 | `get_network_devices()` | every known client: online state, IP addresses, Wi-Fi band and signal |
+| `get_operating_mode()` | router or standalone access point |
+| `get_wan_status()` | internet connection state for IPv4 and IPv6 |
+| `get_external_addresses()` | public IPv4 and IPv6 address |
+| `get_ipv6_prefixes()` | delegated IPv6 prefixes and which local network uses them |
+| `get_dhcp_servers()` | DHCP ranges, gateway, DNS and lease time per local network |
+| `get_dhcp_leases()` | handed-out addresses (IPv4 and IPv6) with remaining lease time |
+| `get_dhcp_reservations()` | fixed address assignments |
 
-More (DHCP leases and reservations, IPv6 prefixes, external IP, firewall rules, Wi-Fi radios,
-ports, USB storage) is on the way. See the [changelog](https://github.com/eizedev/aiosynologysrm/blob/main/CHANGELOG.md) for what each release adds.
+Firewall rules, Wi-Fi radios, ports and USB storage are next. See the
+[changelog](https://github.com/eizedev/aiosynologysrm/blob/main/CHANGELOG.md) for what each
+release adds.
 
 ## Errors
 

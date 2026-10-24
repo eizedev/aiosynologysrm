@@ -23,7 +23,31 @@ from .errors import (
     SrmUnsupportedError,
 )
 from .models import NetworkDevices, SystemInfo, Utilization
-from .reads import ALL_READS, NETWORK_DEVICES, SYSTEM_INFO, UTILIZATION, ReadSpec
+from .network import (
+    DhcpLease,
+    DhcpReservation,
+    DhcpServer,
+    ExternalAddress,
+    Ipv6Prefix,
+    OperatingMode,
+    WanStatus,
+    leases_from_api,
+    reservations_from_api,
+)
+from .reads import (
+    ALL_READS,
+    DHCP_LEASES,
+    DHCP_RESERVATIONS,
+    DHCP_SERVERS,
+    EXTERNAL_ADDRESSES,
+    IPV6_PREFIXES,
+    NETWORK_DEVICES,
+    OPERATING_MODE,
+    SYSTEM_INFO,
+    UTILIZATION,
+    WAN_STATUS,
+    ReadSpec,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -281,6 +305,34 @@ class SrmClient:
     async def get_network_devices(self) -> NetworkDevices:
         """Every client this device knows, online or offline."""
         return NetworkDevices.from_api(await self._read_object(NETWORK_DEVICES))
+
+    async def get_operating_mode(self) -> OperatingMode:
+        """Return whether the device runs as router or as standalone access point."""
+        return OperatingMode.from_api(await self._read_object(OPERATING_MODE))
+
+    async def get_wan_status(self) -> WanStatus:
+        """Internet connection state for IPv4 and IPv6."""
+        return WanStatus.from_api(await self._read_object(WAN_STATUS))
+
+    async def get_external_addresses(self) -> tuple[ExternalAddress, ...]:
+        """Public IPv4 and IPv6 addresses as the router sees them."""
+        return ExternalAddress.list_from_api(await self.read(EXTERNAL_ADDRESSES))
+
+    async def get_ipv6_prefixes(self) -> tuple[Ipv6Prefix, ...]:
+        """Return the delegated IPv6 prefixes and the local networks they serve."""
+        return Ipv6Prefix.list_from_api(await self._read_object(IPV6_PREFIXES))
+
+    async def get_dhcp_servers(self) -> tuple[DhcpServer, ...]:
+        """DHCP settings (address ranges, gateway, DNS, lease time) per local network."""
+        return DhcpServer.list_from_api(await self._read_object(DHCP_SERVERS))
+
+    async def get_dhcp_leases(self) -> tuple[DhcpLease, ...]:
+        """Addresses handed out by the DHCP server, IPv4 and IPv6, on every local network."""
+        return leases_from_api(await self._read_object(DHCP_LEASES))
+
+    async def get_dhcp_reservations(self) -> tuple[DhcpReservation, ...]:
+        """Return the fixed address assignments, IPv4 and IPv6."""
+        return reservations_from_api(await self._read_object(DHCP_RESERVATIONS))
 
     async def _read_object(self, spec: ReadSpec) -> Mapping[str, Any]:
         data = await self.read(spec)

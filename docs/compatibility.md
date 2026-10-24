@@ -29,7 +29,7 @@ This page is the single place that says what this library supports and how sure 
 | Model | SRM | Mode | Status | Fixtures |
 |---|---|---|---|---|
 | RT2600ac | 1.3.2-9366 Update 3 | router | tested | `rt2600ac-srm-1.3.2` |
-| MR2200ac | 1.3.2-9366 Update 3 | standalone access point | tested on the device, fixtures pending | - |
+| MR2200ac | 1.3.2-9366 Update 3 | standalone access point | tested | `mr2200ac-srm-1.3.2` |
 | RT6600ax, WRX560, RT1900ac | 1.3.x | any | expected | - |
 | any | 1.2 or older | any | unknown | - |
 
@@ -40,11 +40,24 @@ This page is the single place that says what this library supports and how sure 
 | `get_system_info()` | `SYNO.Core.System` `info` | 2, 1 | v2 |
 | `get_utilization()` | `SYNO.Core.System.Utilization` `get` | 1 | v1 |
 | `get_network_devices()` | `SYNO.Core.Network.NSM.Device` `get` | 5 | v5 |
+| `get_operating_mode()` | `SYNO.Core.Network.Router.Topology` `get` | 4 | v4 |
+| `get_wan_status()` | `SYNO.Core.Network.Router.ConnectionStatus` `get` | 1 | v1 |
+| `get_external_addresses()` | `SYNO.Core.DDNS.ExtIP` `list` | 1 | v1 |
+| `get_ipv6_prefixes()` | `SYNO.Core.Network.IPv6.Router.Prefix` `list` | 1 | v1 |
+| `get_dhcp_servers()` | `SYNO.Core.Network.DHCPServer` `get` | 1 | v1 |
+| `get_dhcp_leases()` | `SYNO.Core.Network.DHCPServer.ClientList` `list` (`ifname=all`) | 2 | v2 |
+| `get_dhcp_reservations()` | `SYNO.Core.Network.DHCPServer.Reservation` `get` | 2 | v2 |
 
 ## Operating modes
 
 SRM devices run as **router**, as **mesh point** of a router, or as **standalone access point**.
-The mode matters for client data: in a mesh, the router knows which node each client uses
+`get_operating_mode()` tells which one a device is (`router` or `bridge`). The mode matters:
+
+- A **standalone access point** (`bridge`) still answers the WAN and DHCP calls, but its "WAN" is
+  its own uplink, and its DHCP settings are left over from router mode and not in use. Its lease
+  and prefix lists are empty. Only a `router` answers them meaningfully.
+
+The mode also matters for client data: in a mesh, the router knows which node each client uses
 (`mesh_node_id`); behind a standalone access point, the router sees that access point's Wi-Fi
 clients as wired devices, and only the access point knows they are on Wi-Fi. Combining the lists
 of several devices is planned as a library helper.
