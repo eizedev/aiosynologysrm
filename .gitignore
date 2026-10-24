@@ -12,3 +12,4 @@ htmlcov/
 .ruff_cache/
 # Raw router dumps must never be committed; only anonymized fixtures under tests/fixtures/.
 *.raw.json
+src/aiosynologysrm/_version.py
