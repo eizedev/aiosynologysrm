@@ -11,7 +11,7 @@ This page is the single place that says what this library supports and how sure 
    `SrmUnsupportedError`. A newer firmware that keeps an API version keeps working; one that
    drops it fails clearly instead of returning wrong data.
 2. **In the tests**, each supported API has fixtures recorded on a real device, anonymized with
-   [`scripts/anonymize.py`](../scripts/anonymize.py), in `tests/fixtures/<model>-srm-<version>/`.
+   [`scripts/anonymize.py`](https://github.com/eizedev/aiosynologysrm/blob/main/scripts/anonymize.py), in `tests/fixtures/<model>-srm-<version>/`.
    A model or firmware counts as **tested** only when its fixtures are in the repository.
 3. **Reports from users** add models and firmware versions: open an issue with the "Model or
    firmware report" form and attach the output of `aiosynologysrm-diagnostics`.

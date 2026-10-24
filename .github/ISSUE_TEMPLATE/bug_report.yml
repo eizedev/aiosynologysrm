@@ -48,5 +48,5 @@ body:
     id: diagnostics
     attributes:
       label: Output of `aiosynologysrm-diagnostics <router> --user <admin>`
-      description: It contains no addresses or names (see the README); read it, then paste it.
+      description: It contains no addresses or names (https://aiosynologysrm.eize.dev/diagnostics/); read it, then paste it.
       render: json

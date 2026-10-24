@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Documentation website at https://aiosynologysrm.eize.dev/, built from `docs/`; the README is shorter and links to it.
+
 ## [0.6.0] - 2026-10-24
 
 ### Added

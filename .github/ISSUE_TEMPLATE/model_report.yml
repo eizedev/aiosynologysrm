@@ -7,7 +7,7 @@ body:
       value: |
         Reports from devices and setups that are not tested yet help most: other models, other SRM
         versions, and mesh setups. See the
-        [compatibility page](https://github.com/eizedev/aiosynologysrm/blob/main/docs/compatibility.md).
+        [compatibility page](https://aiosynologysrm.eize.dev/compatibility/).
         Please replace MAC addresses, IP addresses and device names before posting
         (e.g. `02:00:00:00:00:01`, `192.0.2.1`).
   - type: input
@@ -73,7 +73,7 @@ body:
     id: diagnostics
     attributes:
       label: Output of `aiosynologysrm-diagnostics <router> --user <admin>`
-      description: It contains no addresses or names (see the README); read it, then paste it.
+      description: It contains no addresses or names (https://aiosynologysrm.eize.dev/diagnostics/); read it, then paste it.
       render: json
   - type: textarea
     id: notes
