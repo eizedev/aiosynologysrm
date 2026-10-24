@@ -6,6 +6,28 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `fingerprint()` is exported, for change detection on any list of models.
+- `SrmClient.clear_catalog()` forgets the cached API catalog, e.g. after a firmware update.
+- `AGENTS.md` with instructions for AI coding agents.
+
+### Changed
+
+- The login version is chosen from the router's catalog (3 or 2) instead of always 3.
+- A redirect answer names the likely cause (`use_https` or port).
+- Releases are only published from commits on `main`, after lint and type checks.
+
+### Fixed
+
+- Malformed router answers no longer raise `ValueError`, `OverflowError` or `RecursionError`: odd
+  numbers and durations out of range become `None`, deeply nested JSON is an `SrmResponseError`.
+  Property-based tests (Hypothesis) cover every parser.
+- The 0.2.0 notes said port forwards, forward rules and port triggers have a `fingerprint`; only
+  firewall rules and security settings do. Use `fingerprint()` for the others.
+- The source distribution includes `scripts/` and `docs/`, so its tests run.
+- Concurrent first calls no longer fetch the API catalog twice.
+
 ## [0.2.0] - 2026-10-24
 
 ### Added

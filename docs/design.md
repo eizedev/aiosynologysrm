@@ -7,7 +7,11 @@ How the library works and why. For what it supports, see [compatibility.md](comp
 Every call the client is able to send is listed in
 [`reads.py`](../src/aiosynologysrm/reads.py). A `ReadSpec` refuses any method that is not a
 read (`get`, `list`, `info`, `tablesget`), and `SrmClient.read()` refuses any spec that is not in
-that list. A write cannot be sent by accident or by a caller.
+that list. Through the public API, a write cannot be sent by accident.
+
+This is a safeguard against mistakes, not a security boundary: code that calls the client's private
+methods can send anything, and a contributor could widen the list. A test pins the list of allowed
+calls, so any change to it shows up in review.
 
 Why not use Synology's own marker? SRM's API descriptors flag methods with `allowDemo`, which
 looks like "safe to call". On an RT2600ac with SRM 1.3.2 that flag also sits on 44 `set`, 11

@@ -82,7 +82,10 @@ DEFAULT_MAX_CONCURRENCY: Final = 2
 MAX_RESPONSE_BYTES: Final = 16 * 1024 * 1024
 
 AUTH_API: Final = "SYNO.API.Auth"
-AUTH_VERSION: Final = 3  # the highest version SRM 1.3 offers
+AUTH_VERSIONS: Final = (
+    3,
+    2,
+)  # login versions this client speaks, highest first; SRM 1.3 offers 1-3
 INFO_API: Final = "SYNO.API.Info"
 
 # Error codes of the Synology Web API framework, shared by DSM and SRM.
@@ -132,6 +135,8 @@ class SrmClient:
         self._login_lock = asyncio.Lock()
         self._semaphore = asyncio.Semaphore(max(1, max_concurrency))
         self._catalog: dict[str, Mapping[str, Any]] | None = None
+        self._catalog_lock = asyncio.Lock()
+        self._auth_version: int | None = None
 
     async def __aenter__(self) -> Self:
         """Log in when used as an async context manager."""
@@ -168,6 +173,8 @@ class SrmClient:
             ):
                 if response.status != 200:  # noqa: PLR2004
                     msg = f"HTTP status {response.status}"
+                    if 300 <= response.status < 400:  # noqa: PLR2004
+                        msg += " (redirect: check use_https and the port)"
                     raise SrmConnectionError(msg)
                 # The body arrives in chunks; read until the end, but never more than the limit.
                 body = bytearray()
@@ -183,7 +190,7 @@ class SrmClient:
             raise SrmConnectionError(msg) from None
         try:
             envelope = json.loads(body)
-        except ValueError:
+        except (ValueError, RecursionError):
             raise SrmResponseError("Response is not JSON") from None
         if not isinstance(envelope, dict) or not isinstance(envelope.get("success"), bool):
             raise SrmResponseError("Response is not a Synology Web API envelope")
@@ -202,10 +209,27 @@ class SrmClient:
         async with self._login_lock:
             await self._login()
 
+    async def _login_version(self) -> int:
+        """Pick the highest login version the router offers; fall back to 3 without a catalog."""
+        if self._auth_version is None:
+            version = AUTH_VERSIONS[0]
+            try:
+                meta = (await self.get_catalog()).get(AUTH_API, {})
+            except (SrmApiError, SrmConnectionError, SrmResponseError):
+                meta = {}
+            low, high = meta.get("minVersion"), meta.get("maxVersion")
+            if isinstance(low, int) and isinstance(high, int):
+                offered = [v for v in AUTH_VERSIONS if low <= v <= high]
+                if not offered:
+                    raise SrmUnsupportedError(104, AUTH_API)
+                version = offered[0]
+            self._auth_version = version
+        return self._auth_version
+
     async def _login(self) -> None:
         form = {
             "api": AUTH_API,
-            "version": str(AUTH_VERSION),
+            "version": str(await self._login_version()),
             "method": "login",
             "account": self._username,
             "passwd": self._password,
@@ -238,7 +262,7 @@ class SrmClient:
                     "auth.cgi",
                     {
                         "api": AUTH_API,
-                        "version": str(AUTH_VERSION),
+                        "version": str(self._auth_version or AUTH_VERSIONS[0]),
                         "method": "logout",
                         "session": self._session_name,
                         "_sid": sid,
@@ -251,11 +275,21 @@ class SrmClient:
         async with self._login_lock:
             if self._sid is None or self._sid == stale_sid:
                 await self._login()
-            assert self._sid is not None  # noqa: S101 - set by _login or raised
+            if self._sid is None:  # pragma: no cover - _login either sets it or raises
+                raise SrmResponseError("Login answer has no session id")
             return self._sid
+
+    def clear_catalog(self) -> None:
+        """Forget the cached API catalog, e.g. after a firmware update; the next call reloads it."""
+        self._catalog = None
+        self._auth_version = None
 
     async def get_catalog(self) -> Mapping[str, Mapping[str, Any]]:
         """Return the router's API catalog (cached; SRM answers it without login)."""
+        async with self._catalog_lock:
+            return await self._load_catalog()
+
+    async def _load_catalog(self) -> Mapping[str, Mapping[str, Any]]:
         if self._catalog is None:
             envelope = await self._post(
                 "query.cgi",

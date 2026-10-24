@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import Any
 
-from ._parse import normalize_mac, to_bool, to_int, to_list, to_mapping, to_str
+from ._parse import normalize_mac, to_bool, to_int, to_list, to_mapping, to_str, to_timedelta
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,7 +100,7 @@ class WifiClient:
                     signal=to_int(item.get("signal")),
                     link_rate_mbps=to_int(item.get("current_rate")),
                     max_link_rate_mbps=to_int(item.get("maximum_rate")),
-                    connected_for=timedelta(seconds=uptime) if uptime is not None else None,
+                    connected_for=to_timedelta(seconds=uptime),
                     bytes_received=to_int(item.get("bytes_rx")),
                     bytes_sent=to_int(item.get("bytes_tx")),
                 )

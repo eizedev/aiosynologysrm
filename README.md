@@ -49,7 +49,7 @@ since 2023. This library starts fresh for today's needs:
 | **Async** | built on `aiohttp`; shares your application's session, ready for Home Assistant |
 | **Read-only guarantee** | only allowlisted read calls can be sent; nothing can change your router |
 | **Credentials** | sent in the POST body, never in a URL or an error message |
-| **Firmware differences** | checks what each router offers and skips the rest instead of failing |
+| **Firmware differences** | checks what each router offers: `supports()` tells you up front, and a call the router lacks raises `SrmUnsupportedError` instead of guessing |
 | **Mesh and standalone access points** | both are in scope, including telling which device a client is on |
 | **Typed and tested** | strict typing, tests against anonymized answers of real routers |
 
@@ -129,10 +129,11 @@ asyncio.run(main())
 | `get_mesh_nodes()` | the router and its mesh points with status and client count |
 | `get_usb_volumes()` | USB storage: file system, size, free space |
 
-Firewall rules, port forwards and security settings carry a `fingerprint`, a hash without hit
-counters, so you can detect configuration changes without comparing field by field.
- See the
-[changelog](https://github.com/eizedev/aiosynologysrm/blob/main/CHANGELOG.md) for what each
+`FirewallRules` and `SecuritySettings` have a `fingerprint` property: a hash without hit
+counters, so you can detect configuration changes without comparing field by field. For any other
+list, `aiosynologysrm.fingerprint(item.raw for item in items)` gives the same kind of hash.
+
+See the [changelog](https://github.com/eizedev/aiosynologysrm/blob/main/CHANGELOG.md) for what each
 release adds.
 
 ## Errors
