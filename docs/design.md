@@ -25,6 +25,23 @@ looks like "safe to call". On an RT2600ac with SRM 1.3.2 that flag also sits on 
   and repeats the request. Concurrent requests share one login.
 - `async with SrmClient(...)` logs out at the end; otherwise call `logout()`.
 - The aiohttp session is passed in and never closed by the client.
+- A two-factor code is sent with one login only, whether it was accepted or not. Codes are valid
+  once, and repeating a rejected one counts towards SRM's auto block. A later login without a code
+  raises `SrmTwoFactorRequiredError`, so unattended use needs an account without two-factor
+  authentication. Trusted-device tokens, which would avoid this on DSM, are not implemented:
+  that SRM's login offers them is not verified.
+- Error 407 becomes `SrmBlockedError`. The meaning (IP address blocked) comes from Synology's
+  DSM Web API documentation; on SRM it is not verified yet.
+
+## Certificates
+
+`ssl` is handed to aiohttp unchanged. Pinning uses `aiohttp.Fingerprint`, the SHA-256 of the
+router's own certificate, the same value `get_certificate_fingerprint()` returns. That function
+completes a TLS handshake without verification and sends nothing else; trusting the value is up
+to the caller, ideally after the user compared it with the certificate shown in SRM.
+TLS failures (untrusted certificate, fingerprint mismatch) raise `SrmCertificateError`, a
+subclass of `SrmConnectionError`, so an application can ask for confirmation of a renewed
+certificate instead of reporting the router as unreachable.
 
 ## Versions
 

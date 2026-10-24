@@ -12,6 +12,7 @@ from aiosynologysrm import (
     ReadSpec,
     SrmApiError,
     SrmAuthenticationError,
+    SrmBlockedError,
     SrmClient,
     SrmConnectionError,
     SrmNotAllowedError,
@@ -75,6 +76,38 @@ async def test_two_factor_codes(fake: FakeSrm, make_client: MakeClient, code: in
     fake.login_error = code
     with pytest.raises(SrmTwoFactorRequiredError):
         await make_client().login()
+
+
+async def test_two_factor_code_is_sent_once(fake: FakeSrm, make_client: MakeClient) -> None:
+    fake.require_otp = True
+    client = make_client(otp_code="123456")
+    await client.login()
+    fake.expire_next_request = True
+    with pytest.raises(SrmTwoFactorRequiredError):
+        await client.get_system_info()
+    logins = [r for r in fake.requests if r.get("method") == "login"]
+    assert len(logins) == 2
+    assert "otp_code" not in logins[1]
+
+
+async def test_wrong_two_factor_code_is_not_repeated(
+    fake: FakeSrm, make_client: MakeClient
+) -> None:
+    fake.require_otp = True
+    client = make_client(otp_code="000000")
+    with pytest.raises(SrmTwoFactorRequiredError):
+        await client.login()
+    with pytest.raises(SrmTwoFactorRequiredError):
+        await client.login()
+    assert "otp_code" not in fake.requests[-1]
+
+
+async def test_blocked_ip_address(fake: FakeSrm, make_client: MakeClient) -> None:
+    fake.login_error = 407
+    with pytest.raises(SrmBlockedError) as err:
+        await make_client().login()
+    assert isinstance(err.value, SrmAuthenticationError)
+    assert err.value.code == 407
 
 
 async def test_expired_session_logs_in_again_once(fake: FakeSrm, make_client: MakeClient) -> None:
