@@ -10,7 +10,12 @@
 
 | CI | License | Typed | Issues | Discussions |
 | -- | ------- | ----- | ------ | ----------- |
-| [![CI](https://github.com/eizedev/aiosynologysrm/actions/workflows/ci.yml/badge.svg)](https://github.com/eizedev/aiosynologysrm/actions/workflows/ci.yml) | [![License](https://img.shields.io/github/license/eizedev/aiosynologysrm.svg)](./LICENSE) | [![Checked with mypy](https://img.shields.io/badge/mypy-strict-2a6db2)](https://mypy-lang.org/) | [![GitHub issues](https://img.shields.io/github/issues-raw/eizedev/aiosynologysrm)](https://github.com/eizedev/aiosynologysrm/issues) | [![GitHub discussions](https://img.shields.io/badge/Discussions-ask%20and%20share-lightgrey)](https://github.com/eizedev/aiosynologysrm/discussions) |
+| [![CI](https://github.com/eizedev/aiosynologysrm/actions/workflows/ci.yml/badge.svg)](https://github.com/eizedev/aiosynologysrm/actions/workflows/ci.yml) | [![License](https://img.shields.io/github/license/eizedev/aiosynologysrm.svg)](https://github.com/eizedev/aiosynologysrm/blob/main/LICENSE) | [![Checked with mypy](https://img.shields.io/badge/mypy-strict-2a6db2)](https://mypy-lang.org/) | [![GitHub issues](https://img.shields.io/github/issues-raw/eizedev/aiosynologysrm)](https://github.com/eizedev/aiosynologysrm/issues) | [![GitHub discussions](https://img.shields.io/badge/Discussions-ask%20and%20share-lightgrey)](https://github.com/eizedev/aiosynologysrm/discussions) |
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/eizedev/aiosynologysrm/main/assets/header-dark.svg">
+  <img alt="aiosynologysrm" src="https://raw.githubusercontent.com/eizedev/aiosynologysrm/main/assets/header-light.svg" height="72">
+</picture>
 
 A Python library that reads what your **Synology router** knows: its own state, the devices on
 your network, and over time DHCP, Wi-Fi, firewall and more. It talks to the router's Web API
@@ -59,7 +64,7 @@ since 2023. This library starts fresh for today's needs:
 
 Router, mesh point and standalone access point are all supported modes. If the router lacks a
 feature, the library says so instead of guessing. Details and how to report your model:
-[docs/compatibility.md](docs/compatibility.md).
+[docs/compatibility.md](https://github.com/eizedev/aiosynologysrm/blob/main/docs/compatibility.md).
 
 ## Quick start
 
@@ -108,7 +113,7 @@ asyncio.run(main())
 | `get_network_devices()` | every known client: online state, IP addresses, Wi-Fi band and signal |
 
 More (DHCP leases and reservations, IPv6 prefixes, external IP, firewall rules, Wi-Fi radios,
-ports, USB storage) is on the way. See the [changelog](CHANGELOG.md) for what each release adds.
+ports, USB storage) is on the way. See the [changelog](https://github.com/eizedev/aiosynologysrm/blob/main/CHANGELOG.md) for what each release adds.
 
 ## Errors
 
@@ -125,14 +130,15 @@ Error messages never contain passwords or session data, so they are safe to log.
 
 ## Documentation
 
-- [Compatibility](docs/compatibility.md): devices, firmware, modes, how support is decided
-- [Design](docs/design.md): how the library stays read-only, sessions, versions, privacy
+- [Compatibility](https://github.com/eizedev/aiosynologysrm/blob/main/docs/compatibility.md): devices, firmware, modes, how support is decided
+- [Design](https://github.com/eizedev/aiosynologysrm/blob/main/docs/design.md): how the library stays read-only, sessions, versions, privacy
 
 ## Contributing
 
-Reports with your router model and SRM version help most. See [CONTRIBUTING.md](CONTRIBUTING.md);
-for security issues [SECURITY.md](SECURITY.md).
+Reports with your router model and SRM version help most. See [CONTRIBUTING.md](https://github.com/eizedev/aiosynologysrm/blob/main/CONTRIBUTING.md);
+for security issues [SECURITY.md](https://github.com/eizedev/aiosynologysrm/blob/main/SECURITY.md).
 
 ## License
 
-[MIT](LICENSE). Provided "as is", without warranty of any kind.
+[MIT](https://github.com/eizedev/aiosynologysrm/blob/main/LICENSE). Provided "as is", without warranty of any kind. The icon and header images are
+CC BY 4.0; their source is in [eizedev/brand](https://github.com/eizedev/brand).
