@@ -31,7 +31,7 @@ async def test_router_firewall_rules(make_client: MakeClient) -> None:
     assert all(r.hits is not None for r in firewall.rules)
     geo = [r for r in firewall.rules if r.source.ip_type == "geo"]
     assert geo
-    assert geo[0].source.ip_value == "DE"
+    assert geo[0].source.ip_value == "XA"  # a neutral code, see scripts/anonymize.py
     assert any(r.in_interfaces for r in firewall.rules)
 
 

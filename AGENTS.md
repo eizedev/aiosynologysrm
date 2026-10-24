@@ -27,8 +27,11 @@ uv run mypy                   # strict
   every allowed call on purpose: update it in the same change, so a reviewer sees it.
 - **Every new API needs a fixture** recorded on a real router and anonymized with
   `scripts/anonymize.py` (all files of one recording in one run). Never commit raw router output;
-  `*.raw.json` is ignored for that reason. Check the anonymized output by eye: the script cannot
-  know every field that may be personal.
+  `*.raw.json` is ignored for that reason. The script is an allowlist: a new text field stops it
+  until the field is added to `KEEP_KEYS`, `ADDRESS_KEYS` or `NAME_KEYS`. Keep only fixed
+  vocabulary; when in doubt, it is a name. Check the output by eye as well.
+- **Models are frozen dataclasses** built by a `from_api` or `list_from_api` class method, with
+  the payload in `raw: Mapping[str, Any] = raw_field()`, set to `frozen(payload)`.
 - **Parsers never raise.** Use the converters in `_parse.py` (`to_int`, `to_str`, `to_bool`,
   `to_timedelta`, ...). Add the new parser to `PARSERS` in `tests/test_robustness.py`.
 - **Units only when verified** on a router; otherwise keep SRM's number in a field ending in `_raw`.

@@ -32,7 +32,6 @@ from .hardware import (
     UsbVolume,
     WifiClient,
     WifiRadio,
-    radios_from_api,
 )
 from .models import NetworkDevices, SystemInfo, Utilization
 from .network import (
@@ -43,8 +42,6 @@ from .network import (
     Ipv6Prefix,
     OperatingMode,
     WanStatus,
-    leases_from_api,
-    reservations_from_api,
 )
 from .reads import (
     ALL_READS,
@@ -403,11 +400,11 @@ class SrmClient:
 
     async def get_dhcp_leases(self) -> tuple[DhcpLease, ...]:
         """Addresses handed out by the DHCP server, IPv4 and IPv6, on every local network."""
-        return leases_from_api(await self._read_object(DHCP_LEASES))
+        return DhcpLease.list_from_api(await self._read_object(DHCP_LEASES))
 
     async def get_dhcp_reservations(self) -> tuple[DhcpReservation, ...]:
         """Return the fixed address assignments, IPv4 and IPv6."""
-        return reservations_from_api(await self._read_object(DHCP_RESERVATIONS))
+        return DhcpReservation.list_from_api(await self._read_object(DHCP_RESERVATIONS))
 
     async def get_firewall_rules(self) -> FirewallRules:
         """Return the default policies and every firewall rule with its hit counter."""
@@ -443,7 +440,7 @@ class SrmClient:
         settings, status = await asyncio.gather(
             self._read_object(WIFI_RADIO_SETTINGS), self._read_object(WIFI_RADIO_STATUS)
         )
-        return radios_from_api(settings, status)
+        return WifiRadio.list_from_api(settings, status)
 
     async def get_wifi_clients(self) -> tuple[WifiClient, ...]:
         """Return radio statistics of the clients on this device's own Wi-Fi."""

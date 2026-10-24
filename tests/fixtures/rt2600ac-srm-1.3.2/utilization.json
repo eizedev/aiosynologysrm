@@ -12,7 +12,7 @@
     "disk": [
       {
         "device": "sdr",
-        "display_name": "USB Disk 1",
+        "display_name": "display_name-2",
         "read_access": 0,
         "read_byte": 0,
         "type": "usb",
@@ -89,7 +89,7 @@
     "volume": [
       {
         "device": "mmcblk0p6",
-        "display_name": "volume1",
+        "display_name": "display_name-3",
         "read_access": 0,
         "read_byte": 2048,
         "utilization": 0,

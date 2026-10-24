@@ -9,6 +9,8 @@ from pathlib import Path
 import pytest
 
 from aiosynologysrm import (
+    DhcpLease,
+    DhcpReservation,
     DhcpServer,
     ExternalAddress,
     Ipv6Prefix,
@@ -17,7 +19,6 @@ from aiosynologysrm import (
     SrmClient,
     WanStatus,
 )
-from aiosynologysrm.network import leases_from_api, reservations_from_api
 from aiosynologysrm.reads import DHCP_LEASES
 
 from .conftest import MR2200AC, RT2600AC, FakeSrm, load, responses
@@ -123,8 +124,8 @@ def test_every_fixture_parses(folder: Path) -> None:
     ExternalAddress.list_from_api(load(folder / "external_addresses.json"))
     Ipv6Prefix.list_from_api(load(folder / "ipv6_prefixes.json"))
     DhcpServer.list_from_api(load(folder / "dhcp_servers.json"))
-    leases_from_api(load(folder / "dhcp_leases.json"))
-    reservations_from_api(load(folder / "dhcp_reservations.json"))
+    DhcpLease.list_from_api(load(folder / "dhcp_leases.json"))
+    DhcpReservation.list_from_api(load(folder / "dhcp_reservations.json"))
 
 
 def test_odd_input() -> None:
@@ -138,14 +139,16 @@ def test_odd_input() -> None:
     assert server.ipv4.prefix is None
     assert server.ipv4.lease_time is None
     assert server.ipv6 is None
-    leases = leases_from_api({"clientList": {"ipv4": [{"ip": "192.0.2.9", "expire": "soon"}, {}]}})
+    leases = DhcpLease.list_from_api(
+        {"clientList": {"ipv4": [{"ip": "192.0.2.9", "expire": "soon"}, {}]}}
+    )
     assert len(leases) == 1
     assert leases[0].expires_in is None
     assert not leases[0].permanent
-    assert leases_from_api({"clientList": {"ipv6": [{"ip": "2001:db8::9", "expire": "1,2,3"}]}})[
-        0
-    ].expires_in == timedelta(days=1, hours=2, minutes=3)
-    assert reservations_from_api({"reservationList": {"ipv4": [{"hostname": "x"}]}}) == ()
+    assert DhcpLease.list_from_api(
+        {"clientList": {"ipv6": [{"ip": "2001:db8::9", "expire": "1,2,3"}]}}
+    )[0].expires_in == timedelta(days=1, hours=2, minutes=3)
+    assert DhcpReservation.list_from_api({"reservationList": {"ipv4": [{"hostname": "x"}]}}) == ()
 
 
 async def test_errors_carry_the_api(fake: FakeSrm, make_client: MakeClient) -> None:

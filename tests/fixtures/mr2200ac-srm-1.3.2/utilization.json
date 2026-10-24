@@ -68,7 +68,7 @@
     "volume": [
       {
         "device": "mmcblk0p6",
-        "display_name": "volume1",
+        "display_name": "display_name-3",
         "read_access": 0,
         "read_byte": 0,
         "utilization": 0,
