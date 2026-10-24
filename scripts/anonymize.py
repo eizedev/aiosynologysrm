@@ -22,6 +22,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
+if sys.version_info < (3, 12):  # noqa: UP036 - the script also runs outside the project's venv
+    sys.exit("anonymize.py needs Python 3.12 or newer; run it with `uv run python ...`")
+
 # DHCPv6 client ids (DUIDs) are longer colon-separated hex strings and often embed a MAC
 # address; they are replaced as a whole, before the MAC pattern could match a part of them.
 DUID = re.compile(r"\b[0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){6,129}\b")
@@ -33,77 +36,116 @@ TOKEN = re.compile(
     f"(?P<duid>{DUID.pattern})|(?P<mac>{MAC.pattern})|(?P<ipv4>{IPV4.pattern})"
     f"|(?P<ipv6>{IPV6.pattern})|(?P<host>{HOST.pattern})"
 )
+KEY = re.compile(r"[A-Za-z0-9_.]+")  # what an SRM field name looks like
 IPV4_POOLS = ("192.0.2", "198.51.100", "203.0.113")  # documentation ranges, RFC 5737
 MAC_DIGITS = 12
 
-# Fixed vocabulary or harmless technical values, kept as they are. A host name equal to one of
-# these values ("ipad", "tv") is a generic word and not a leak.
-KEEP_KEYS = frozenset(
-    {
-        "action",
-        "band",
-        "chain",
-        "channel_width",
-        "cls",
-        "conn_status",
-        "connection",
-        "container",
-        "cpu_cores",
-        "cpu_family",
-        "cpu_series",
-        "cpu_vendor",
-        "created_by",
-        "custom_topology_mode",
-        "dev_type",
-        "device",
-        "dst_ip_type",
-        "dst_port_type",
-        "expire",
-        "firmware_date",
-        "firmware_ver",
-        "fs_type",
-        "ifname",
-        "in_interface_type",
-        "in_interface_value",
-        "interface_name",
-        "ip_version",
-        "ipv4_wan_to_lan",
-        "ipv4_wan_to_srm",
-        "ipv6_wan_to_lan",
-        "ipv6_wan_to_srm",
-        "lan",
-        "led_mode",
-        "location",
-        "model",
-        "net_topology",
-        "network",
-        "network_status",
-        "node_status",
-        "node_status_msg",
-        "out_interface_type",
-        "out_interface_value",
-        "port",
-        "profile",
-        "protocol",
-        "radio_type",
-        "raid_type",
-        "rate_quality",
-        "size_free_byte",
-        "size_total_byte",
-        "src_ip_type",
-        "src_port_type",
-        "status",
-        "supported_mode",
-        "time",
-        "transmit_power",
-        "type",
-        "unique",
-        "up_time",
-        "volume_path",
-        "wan",
-        "wireless_mode",
-    }
-)
+# Fixed vocabulary or technical values, kept as they are, but only the values listed here: a new
+# value under one of these keys stops the script until it is added (or the key reclassified).
+# A host name equal to one of these values ("ipad", "tv") is a generic word and not a leak.
+KEEP_VALUES: dict[str, frozenset[str]] = {
+    "action": frozenset({"allow", "deny"}),
+    "band": frozenset({"2.4G", "5G", "5G-2"}),
+    "chain": frozenset({"both_input_forward", "forward", "input"}),
+    "channel_width": frozenset({"20", "20_40", "20_40_80"}),
+    "cls": frozenset({"disk"}),
+    "conn_status": frozenset({"normal"}),
+    "connection": frozenset({"ethernet", "wifi"}),
+    "container": frozenset({"external"}),
+    "cpu_family": frozenset({"Dakota", "Krait"}),
+    "cpu_series": frozenset({"IPQ4019", "IPQ8065"}),
+    "cpu_vendor": frozenset({"QUALCOMM"}),
+    "created_by": frozenset({"forwardRule", "user"}),
+    "custom_topology_mode": frozenset({"auto_detection"}),
+    "dev_type": frozenset(
+        {
+            "air_conditioner",
+            "av_system",
+            "cellphone",
+            "default",
+            "dlna",
+            "game",
+            "ipad",
+            "nas",
+            "nb",
+            "other",
+            "printer",
+            "robotcleaner",
+            "router",
+            "switch",
+            "temperature_sensor",
+            "tv",
+            "watch",
+            "water_heater",
+        }
+    ),
+    "device": frozenset(
+        {
+            "Memory",
+            "System",
+            "br0",
+            "bwlan0",
+            "bwlan1",
+            "eth0",
+            "eth2",
+            "lbr0",
+            "mmcblk0p6",
+            "sdr",
+            "total",
+        }
+    ),
+    "dst_ip_type": frozenset({"all", "single"}),
+    "dst_port_type": frozenset({"all", "custom", "service"}),
+    "fs_type": frozenset({"ext4"}),
+    "ifname": frozenset({"br0", "eth0", "gbr0", "lbr0"}),
+    "in_interface_type": frozenset({"all", "specific"}),
+    "in_interface_value": frozenset({"lan"}),
+    "interface_name": frozenset({"wlan000", "wlan100", "wlan200"}),
+    "ip_version": frozenset({"both_v4_v6", "v4", "v6"}),
+    "ipv4_wan_to_lan": frozenset({"deny"}),
+    "ipv4_wan_to_srm": frozenset({"deny"}),
+    "ipv6_wan_to_lan": frozenset({"deny"}),
+    "ipv6_wan_to_srm": frozenset({"deny"}),
+    "lan": frozenset({"gbr0", "lbr0"}),
+    "led_mode": frozenset({"normal", "schedule"}),
+    "location": frozenset({"usb"}),
+    "model": frozenset({"MR2200ac", "RT2600ac"}),
+    "net_topology": frozenset({"bridge", "router"}),
+    "network": frozenset({"br0", "lbr0"}),
+    "network_status": frozenset({"online"}),
+    "node_status": frozenset({"good"}),
+    "node_status_msg": frozenset({"good"}),
+    "out_interface_type": frozenset({"all", "specific"}),
+    "out_interface_value": frozenset({"lan", "wan"}),
+    "port": frozenset({"lp1", "lp2", "lp3", "lp4", "wp1"}),
+    "profile": frozenset({"custom"}),
+    "protocol": frozenset({"all", "both_tcp_udp", "icmp", "tcp", "udp"}),
+    "radio_type": frozenset({"2.4G", "5G", "5G-1", "5G-2"}),
+    "raid_type": frozenset({"-"}),
+    "rate_quality": frozenset({"high", "middle"}),
+    "src_ip_type": frozenset({"all", "geo", "single"}),
+    "src_port_type": frozenset({"all"}),
+    "status": frozenset(),
+    "supported_mode": frozenset({"bridge router "}),
+    "transmit_power": frozenset({"high"}),
+    "type": frozenset({"WAN", "ra-only", "stateful", "upnp", "usb"}),
+    "unique": frozenset({"synology_dakota_mr2200ac", "synology_ipq806x_rt2600ac"}),
+    "volume_path": frozenset({"/volumeUSB1/usbshare"}),
+    "wan": frozenset({"eth0"}),
+    "wireless_mode": frozenset({"a_n_ac", "b_g_n"}),
+}
+# Kept fields whose values vary but have a fixed format.
+KEEP_PATTERNS: dict[str, re.Pattern[str]] = {
+    "cpu_cores": re.compile(r"\d+"),
+    "expire": re.compile(r"unlimited|\d+,\d+,\d+"),
+    "firmware_date": re.compile(r"\d{4}/\d{2}/\d{2}"),
+    "firmware_ver": re.compile(r"SRM \d+\.\d+(\.\d+)?-\d+( Update \d+)?"),
+    "size_free_byte": re.compile(r"\d+"),
+    "size_total_byte": re.compile(r"\d+"),
+    "time": re.compile(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}"),
+    "up_time": re.compile(r"\d+:\d{2}:\d{2}"),
+}
+KEEP_KEYS = frozenset(KEEP_VALUES) | frozenset(KEEP_PATTERNS)
 # Addresses: replaced token by token, the rest of the value is kept.
 ADDRESS_KEYS = frozenset(
     {
@@ -148,6 +190,74 @@ NAME_KEYS = frozenset(
         "wifi_ssid",
     }
 )
+# Keys whose numbers are kept: counters, sizes, ids SRM assigns. Any other number stops the script.
+NUMBER_KEYS = frozenset(
+    {
+        "15min_load",
+        "1min_load",
+        "5min_load",
+        "associate_up_time",
+        "attempts",
+        "avail_real",
+        "avail_swap",
+        "buffer",
+        "bytes_rx",
+        "bytes_tx",
+        "cached",
+        "channel",
+        "channel2",
+        "connected_devices",
+        "cpu_clock_speed",
+        "current_rate",
+        "current_rate_rx",
+        "current_rate_tx",
+        "duplicated_rules",
+        "expire_day",
+        "hit_count",
+        "lease",
+        "link_speed",
+        "max_rate",
+        "maximum_rate",
+        "memory_size",
+        "mesh_node_id",
+        "network_id",
+        "node_id",
+        "offset",
+        "other_load",
+        "parent_node_id",
+        "prefer_life_time",
+        "preferred_lft",
+        "prefix",
+        "ram_size",
+        "read_access",
+        "read_byte",
+        "real_usage",
+        "rx",
+        "si_disk",
+        "signal",
+        "signalstrength",
+        "so_disk",
+        "swap_usage",
+        "system_load",
+        "time",
+        "timeout",
+        "total",
+        "total_real",
+        "total_swap",
+        "transferrxrate",
+        "transfertxrate",
+        "tx",
+        "ui_id",
+        "user_load",
+        "utilization",
+        "valid_lft",
+        "valid_life_time",
+        "wifi_network_id",
+        "within_mins",
+        "write_access",
+        "write_byte",
+    }
+)
 SECRET_KEYS = re.compile(r"serial|(^|_)sn$|pass|psk|token|secret|(^|_)key$", re.IGNORECASE)
 # Port numbers, as integers or inside strings like "8444,25556" or "6001-6010". Service names in
 # these fields ("dms_https") are SRM vocabulary and stay.
@@ -179,6 +289,9 @@ class Anonymizer:
         self.ports: dict[int, int] = {}
         self.countries: dict[str, str] = {}
         self.unknown: set[str] = set()
+        self.unknown_values: set[str] = set()
+        self.unknown_numbers: set[str] = set()
+        self.odd_keys = 0
         self.originals: set[str] = set()
         self.original_names: set[str] = set()
 
@@ -319,20 +432,34 @@ class Anonymizer:
             return "XXXXXXXX"
         if lower == "time_zone":
             return NEUTRAL_TIME_ZONE
-        if lower in KEEP_KEYS:
+        if lower in KEEP_PATTERNS:
+            if not KEEP_PATTERNS[lower].fullmatch(value):
+                self.unknown_values.add(lower)
+            return value
+        if lower in KEEP_VALUES:
+            if value not in KEEP_VALUES[lower]:
+                self.unknown_values.add(lower)
             return value
         if lower in ADDRESS_KEYS:
             return self.text(value)
         if lower in NAME_KEYS:
             return self.name(lower, value)
-        self.unknown.add(key)
+        self._note(self.unknown, key)
         return value
+
+    @staticmethod
+    def _note(found: set[str], key: str) -> None:
+        """Remember a key for the error message, unless the key itself could be personal."""
+        if KEY.fullmatch(key) and not TOKEN.search(key):
+            found.add(key)
 
     def walk(self, value: Any, key: str = "") -> Any:
         """Return an anonymized copy of a JSON value; unclassified text keys are collected."""
         if isinstance(value, dict):
             result = {}
             for k, v in value.items():
+                if not KEY.fullmatch(k) or TOKEN.search(k):
+                    self.odd_keys += 1  # an address or a name used as a key
                 side = k.removesuffix("_ip_value")
                 if side != k and value.get(f"{side}_ip_type") == "geo" and isinstance(v, str):
                     result[k] = self._countries(v)
@@ -345,14 +472,38 @@ class Anonymizer:
             return [self.walk(v, key) for v in value]
         if isinstance(value, str):
             return self._string(key, value)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            if SECRET_KEYS.search(key):
+                return 0
+            if key.lower() not in NUMBER_KEYS:
+                self._note(self.unknown_numbers, key)
         return value
 
     def check(self) -> None:
-        """Raise if a text value was left alone because its key is not classified."""
+        """Raise if anything was left alone because the script does not know it.
+
+        Messages name keys only, never values, so the output is safe to paste.
+        """
+        problems = []
         if self.unknown:
             names = ", ".join(sorted(self.unknown))
-            msg = f"unclassified keys, add each to KEEP_KEYS, ADDRESS_KEYS or NAME_KEYS: {names}"
-            raise UnknownKeyError(msg)
+            problems.append(
+                f"text under unclassified keys ({names}): add each to KEEP_VALUES, "
+                "KEEP_PATTERNS, ADDRESS_KEYS or NAME_KEYS"
+            )
+        if self.unknown_values:
+            names = ", ".join(sorted(self.unknown_values))
+            problems.append(
+                f"new values under kept keys ({names}): add them to KEEP_VALUES if "
+                "they are vocabulary, otherwise move the key to NAME_KEYS"
+            )
+        if self.unknown_numbers:
+            names = ", ".join(sorted(self.unknown_numbers))
+            problems.append(f"numbers under unclassified keys ({names}): add each to NUMBER_KEYS")
+        if self.odd_keys:
+            problems.append(f"{self.odd_keys} keys that look like addresses or names")
+        if problems:
+            raise UnknownKeyError("; ".join(problems))
 
 
 def _values(value: Any, key: str = "") -> list[tuple[str, str]]:

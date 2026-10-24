@@ -29,6 +29,12 @@ All notable changes to this project are documented here. The format follows
   `interface`, `InterfaceTraffic.rx_raw`/`tx_raw` -> `rx_rate_raw`/`tx_rate_raw`,
   `MeshNode.is_main_router` -> `is_root` (also true for a standalone device).
 - **Breaking:** `SystemInfo.firmware_date` is a `datetime.date`.
+- The fixture anonymizer also checks values: kept fields accept only listed values or formats,
+  numbers only under listed keys, and keys that look like addresses or names stop it. Its
+  messages name keys, never values. It refuses to run on Python older than 3.12.
+- Releases run the complete CI workflow (all Python versions, formatting, lowest dependencies)
+  before publishing.
+- Issue forms cover every getter and mesh setups.
 - Documentation: what "read only" covers, mesh setups marked as untested, where external addresses
   come from, the meaning of error codes 105, 117 and 407.
 

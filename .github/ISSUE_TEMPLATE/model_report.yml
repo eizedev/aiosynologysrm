@@ -1,7 +1,15 @@
 name: Model or firmware report
-description: Tell us whether the library works with your router and firmware.
+description: Tell us whether the library works with your router, firmware and setup.
 labels: ["compatibility"]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Reports from devices and setups that are not tested yet help most: other models, other SRM
+        versions, and mesh setups. See the
+        [compatibility page](https://github.com/eizedev/aiosynologysrm/blob/main/docs/compatibility.md).
+        Please replace MAC addresses, IP addresses and device names before posting
+        (e.g. `02:00:00:00:00:01`, `192.0.2.1`).
   - type: input
     id: model
     attributes:
@@ -20,18 +28,47 @@ body:
   - type: dropdown
     id: mode
     attributes:
-      label: Operating mode
-      options: ["router", "mesh point", "standalone access point"]
+      label: Operating mode of the device you connected to
+      options:
+        - "router without mesh points"
+        - "router with mesh points"
+        - "mesh point"
+        - "standalone access point"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: aiosynologysrm version
+      description: "`pip show aiosynologysrm`"
     validations:
       required: true
   - type: checkboxes
     id: works
     attributes:
       label: What works
+      description: Tick what returned sensible data.
       options:
         - label: get_system_info()
         - label: get_utilization()
         - label: get_network_devices()
+        - label: get_operating_mode()
+        - label: get_wan_status()
+        - label: get_external_addresses()
+        - label: get_ipv6_prefixes()
+        - label: get_dhcp_servers()
+        - label: get_dhcp_leases()
+        - label: get_dhcp_reservations()
+        - label: get_firewall_rules()
+        - label: get_forward_rules()
+        - label: get_port_forwards()
+        - label: get_port_triggers()
+        - label: get_security_settings()
+        - label: get_wifi_radios()
+        - label: get_wifi_clients()
+        - label: get_ethernet_ports()
+        - label: get_mesh_nodes()
+        - label: get_usb_volumes()
   - type: textarea
     id: notes
     attributes:

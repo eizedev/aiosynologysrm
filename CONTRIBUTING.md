@@ -10,6 +10,24 @@ Open an issue with the **Model or firmware report** form and tell us the model, 
 paste raw router output: it contains your MAC addresses, IP addresses and device names. A
 diagnostics command that produces an anonymized report is planned.
 
+## Where help is wanted
+
+Issues labelled [`help wanted`](https://github.com/eizedev/aiosynologysrm/labels/help%20wanted)
+need someone with hardware or a setup the maintainer does not have, for example a mesh. Issues
+labelled [`roadmap`](https://github.com/eizedev/aiosynologysrm/labels/roadmap) describe what is
+planned next. Other labels:
+
+| Label | Meaning |
+| --- | --- |
+| `bug` | something does not work as documented |
+| `enhancement` | something the library should read or do |
+| `compatibility` | a report about a model, firmware or setup |
+| `needs device test` | implemented, but not checked on a real device yet |
+| `breaking change` | changes the public API |
+| `security` | a security-relevant change (report vulnerabilities privately, see SECURITY.md) |
+| `documentation` | docs only |
+| `dependencies` | dependency updates, usually from Dependabot |
+
 ## Development setup
 
 You need [uv](https://docs.astral.sh/uv/) and Python 3.12 or newer.
