@@ -48,10 +48,10 @@ since 2023. This library starts fresh for today's needs:
 | | aiosynologysrm |
 | --- | --- |
 | **Async** | built on `aiohttp`; shares your application's session, ready for Home Assistant |
-| **Read-only guarantee** | only allowlisted read calls can be sent; nothing can change your router |
+| **Read only** | the client only sends allowlisted read calls; logging in still leaves a session and a log entry on the router |
 | **Credentials** | sent in the POST body, never in a URL or an error message |
 | **Firmware differences** | checks what each router offers: `supports()` tells you up front, and a call the router lacks raises `SrmUnsupportedError` instead of guessing |
-| **Mesh and standalone access points** | both are in scope, including telling which device a client is on |
+| **Mesh and standalone access points** | in scope, including telling which device a client is on; mesh setups are not tested yet |
 | **Typed and tested** | strict typing, tests against anonymized answers of real routers |
 
 ## Which devices work?
@@ -63,14 +63,20 @@ since 2023. This library starts fresh for today's needs:
 | ❔ **Unknown** | SRM 1.2 and older |
 | ❌ **Not in scope** | Synology NAS (DSM), other vendors' routers, changing settings |
 
-Router, mesh point and standalone access point are all supported modes. If the router lacks a
-feature, the library says so instead of guessing. Details and how to report your model:
+Router and standalone access point are tested; mesh setups are in scope but not tested yet
+([help wanted](https://github.com/eizedev/aiosynologysrm/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22)).
+If the router lacks a feature, the library raises `SrmUnsupportedError` instead of guessing. Details and how to report your model:
 [docs/compatibility.md](https://github.com/eizedev/aiosynologysrm/blob/main/docs/compatibility.md).
 
 ## Quick start
 
 You need Python 3.12 or newer and an SRM **administrator** account (SRM's Web API only answers
 administrators; a dedicated account for your integration is a good idea).
+
+The library only reads, but the account it uses can change everything on the router: keep the
+password safe, and prefer certificate pinning over `ssl=False` (see below). Each failed login
+counts towards SRM's auto block; after one, the client stops logging in by itself until you call
+`login()` again.
 
 ```sh
 pip install aiosynologysrm
@@ -135,7 +141,7 @@ account without two-factor authentication.
 | `get_network_devices()` | every known client: online state, IP addresses, Wi-Fi band and signal |
 | `get_operating_mode()` | router or standalone access point |
 | `get_wan_status()` | internet connection state for IPv4 and IPv6 |
-| `get_external_addresses()` | public IPv4 and IPv6 address |
+| `get_external_addresses()` | public IPv4 and IPv6 address, as SRM last recorded them (can be out of date) |
 | `get_ipv6_prefixes()` | delegated IPv6 prefixes and which local network uses them |
 | `get_dhcp_servers()` | DHCP ranges, gateway, DNS and lease time per local network |
 | `get_dhcp_leases()` | handed-out addresses (IPv4 and IPv6) with remaining lease time |

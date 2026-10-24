@@ -10,7 +10,7 @@ from types import MappingProxyType
 from typing import Any
 
 _INT = re.compile(r"-?[0-9]+")
-_MAC = re.compile(r"^[0-9a-f]{2}(?:[:-]?[0-9a-f]{2}){5}$")
+_MAC = re.compile(r"^[0-9a-f]{2}([:-]?)[0-9a-f]{2}(?:\1[0-9a-f]{2}){4}$")  # one separator
 
 
 def to_int(value: Any) -> int | None:

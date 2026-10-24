@@ -184,7 +184,7 @@ async def test_catalog_is_cached(fake: FakeSrm, make_client: MakeClient) -> None
     [
         (103, SrmUnsupportedError),
         (105, SrmPermissionError),
-        (117, SrmPermissionError),
+        (117, SrmApiError),
         (999, SrmApiError),
     ],
 )

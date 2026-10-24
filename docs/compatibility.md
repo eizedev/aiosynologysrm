@@ -21,6 +21,7 @@ This page is the single place that says what this library supports and how sure 
 |---|---|
 | tested | fixtures from this model and firmware are in `tests/fixtures/` |
 | expected | same SRM generation and API versions as a tested model, not confirmed |
+| untested | in scope and implemented, but nobody has checked it on a device yet |
 | unknown | nothing known; the catalog check still prevents wrong calls |
 | out of scope | will not be supported |
 
@@ -31,6 +32,7 @@ This page is the single place that says what this library supports and how sure 
 | RT2600ac | 1.3.2-9366 Update 3 | router | tested | `rt2600ac-srm-1.3.2` |
 | MR2200ac | 1.3.2-9366 Update 3 | standalone access point | tested | `mr2200ac-srm-1.3.2` |
 | RT6600ax, WRX560, RT1900ac | 1.3.x | any | expected | - |
+| any | 1.3.x | mesh point, or router with mesh points | untested | - |
 | any | 1.2 or older | any | unknown | - |
 
 ## APIs
@@ -58,6 +60,18 @@ This page is the single place that says what this library supports and how sure 
 | `get_usb_volumes()` | `SYNO.Core.Storage.Volume` `list` (`limit=-1&offset=0&location=external`) | 1 | v1 |
 | `get_security_settings()` | `Firewall.AllowSrmFromWan`, `Firewall.Conf`, `Firewall.Forward.Conf`, `Security.AutoBlock` (`get`) | 1 | v1 |
 
+For the RT6600ax there is outside evidence: the Home Assistant integration
+[synology-srm-extended](https://github.com/Vachler/synology-srm-extended) reads the same device
+list (`NSM.Device` v5), topology, Ethernet port and external address APIs on an RT6600ax with
+SRM 1.3.2. That supports "expected", it does not replace fixtures.
+
+## Where values come from
+
+- `get_external_addresses()` does not look anything up. SRM returns what a background service
+  stored: on a router with DDNS the DDNS updater (it asks `checkip.synology.com`); on a standalone
+  access point without DDNS the value was present as well, written by a service not identified
+  yet. The values can be out of date or missing. This was measured on one network only.
+
 ## Operating modes
 
 SRM devices run as **router**, as **mesh point** of a router, or as **standalone access point**.
@@ -71,6 +85,11 @@ The mode also matters for client data: in a mesh, the router knows which node ea
 (`mesh_node_id`); behind a standalone access point, the router sees that access point's Wi-Fi
 clients as wired devices, and only the access point knows they are on Wi-Fi. Combining the lists
 of several devices is planned as a library helper.
+
+Mesh setups are untested: the fixtures come from a router and a standalone access point. Whether a
+mesh point answers the Web API itself is not known; Synology manages mesh points from the main
+router, and reviews report that a mesh point's own interface cannot be opened. Until someone checks
+it, connect to the main router.
 
 ## Out of scope
 
