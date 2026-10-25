@@ -34,8 +34,9 @@ hide:
 ## Using Home Assistant?
 
 [Synology SRM Router](https://ha-synology-srm-router.eize.dev/) is the Home Assistant integration built on this library: routers and
-access points as devices with load, traffic and WAN state, and device trackers that know which
-router, access point and radio each client uses. It installs from HACS, no code needed.
+access points as devices with load, traffic, WAN, clients per Wi-Fi band, DHCP, firewall rules
+with their hits and USB storage, and device trackers that know which router, access point and
+radio each client uses. It installs from HACS, no code needed.
 
 ## Why this library?
 
