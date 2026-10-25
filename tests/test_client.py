@@ -155,6 +155,13 @@ async def test_expired_session_logs_in_again_once(fake: FakeSrm, make_client: Ma
     assert fake.logins == 2
 
 
+async def test_refused_fresh_sessions_are_retried(fake: FakeSrm, make_client: MakeClient) -> None:
+    client = make_client()
+    fake.refuse_sessions = 3  # the first login and two more hand out dead sessions
+    await client.get_system_info()
+    assert fake.logins == 4
+
+
 async def test_repeated_session_error_is_a_session_error(
     fake: FakeSrm, make_client: MakeClient
 ) -> None:
@@ -163,6 +170,7 @@ async def test_repeated_session_error_is_a_session_error(
     fake.errors[("SYNO.Core.System", "info")] = 106
     with pytest.raises(SrmSessionError):
         await client.get_system_info()
+    assert fake.logins == 4  # the first login and three more, then it gives up
 
 
 async def test_concurrent_reads_share_one_login(fake: FakeSrm, make_client: MakeClient) -> None:

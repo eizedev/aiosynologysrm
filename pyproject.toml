@@ -55,7 +55,10 @@ source = "vcs"
 version-file = "src/aiosynologysrm/_version.py"
 
 [tool.hatch.build.targets.sdist]
-include = ["src", "tests", "scripts", "docs", "README.md", "CHANGELOG.md", "AGENTS.md", "LICENSE"]
+include = [
+    "src", "tests", "scripts", "docs", "README.md", "CHANGELOG.md", "AGENTS.md", "LICENSE",
+    "CONTRIBUTING.md", "SECURITY.md", "CODE_OF_CONDUCT.md", "build-constraints.txt", "uv.lock",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -94,3 +97,7 @@ ignore = [
 "scripts/**" = ["D", "T201", "S603", "S607"]
 # Model fields are declared with srm(), which returns a dataclasses.field() like field() itself.
 "src/aiosynologysrm/{models,network,hardware,firewall}.py" = ["RUF009"]
+
+[tool.uv]
+# The uv CI uses (setup-uv reads it); a range, so patch releases come without a change here.
+required-version = ">=0.13.5,<0.14"

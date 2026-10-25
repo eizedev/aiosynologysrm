@@ -19,8 +19,8 @@ import aiohttp
 
 from aiosynologysrm import SrmClient
 
-# SRM ships a self-signed certificate: pin its fingerprint (see "Certificate" below for how to
-# read it once and confirm it).
+# SRM ships a self-signed certificate: pin its fingerprint (see "Certificate and two-factor
+# authentication" below for how to read it once and confirm it).
 FINGERPRINT = "<the router's SHA-256 fingerprint, hex>"
 
 
@@ -61,7 +61,11 @@ client = SrmClient(..., ssl=aiohttp.Fingerprint(bytes.fromhex(fingerprint)))
 A renewed certificate then raises `SrmCertificateError` until the new fingerprint is confirmed.
 `ssl` also takes `False` or an `ssl.SSLContext`. `ssl=True` uses the aiohttp session's own
 setting, so with a session that does not verify certificates nothing is checked; pin a fingerprint
-or pass an `SSLContext` instead.
+or pass an `SSLContext` instead. A router with a certificate from a public CA (for example Let's
+Encrypt) renews it every few months; pinning then means confirming each new fingerprint, so pass
+an `SSLContext` that verifies against the system's CAs instead. Confirming a fingerprint over the
+same network the client uses proves little against an attacker already in that network: compare
+it with what a browser shows on a device you trust.
 
 Two-factor authentication works for interactive use only: `otp_code` is sent with the first login
 and never again. When the session ends, the next login raises `SrmTwoFactorRequiredError` and

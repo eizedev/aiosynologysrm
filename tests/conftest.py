@@ -95,6 +95,9 @@ class FakeSrm:
     login_error: int | None = None
     require_otp: bool = False
     expire_next_request: bool = False
+    refuse_sessions: int = 0
+    """How many of the next logins hand out a session id that is refused right away, as SRM does
+    now and then."""
     raw_body: bytes | None = None
     status: int = 200
     delay: float = 0
@@ -103,6 +106,8 @@ class FakeSrm:
     logouts: int = 0
     requests: list[dict[str, str]] = field(default_factory=list)
     valid_sids: set[str] = field(default_factory=set)
+    sid_by_session: dict[str, str] = field(default_factory=dict)
+    """Like SRM: one live session per account and session name; a new login ends the old one."""
 
     def ok(self, data: Any) -> web.Response:
         if self.chunked:
@@ -164,7 +169,14 @@ class FakeSrm:
             return self.fail(403)
         self.logins += 1
         sid = f"sid-{self.logins}"
-        self.valid_sids.add(sid)
+        name = form.get("session", "")
+        if (old := self.sid_by_session.get(name)) is not None:
+            self.valid_sids.discard(old)
+        self.sid_by_session[name] = sid
+        if self.refuse_sessions:
+            self.refuse_sessions -= 1
+        else:
+            self.valid_sids.add(sid)
         return self.ok({"sid": sid})
 
 
