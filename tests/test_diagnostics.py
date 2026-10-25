@@ -177,3 +177,8 @@ async def test_a_certificate_error_in_one_getter_keeps_the_report(
 
 async def _always(_: Any) -> bool:
     return True
+
+
+def test_fingerprint_needs_https() -> None:
+    with pytest.raises(SystemExit, match="needs HTTPS"):
+        diag._trust(_args("--http", "--fingerprint", "ab" * 32))

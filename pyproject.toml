@@ -11,7 +11,7 @@ license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.12"
 authors = [{ name = "eizedev", email = "oss@eize.dev" }]
-keywords = ["synology", "srm", "router", "rt2600ac", "mr2200ac", "rt6600ax", "wrx560", "asyncio", "aiohttp", "home-assistant"]
+keywords = ["synology", "srm", "router", "rt2600ac", "mr2200ac", "asyncio", "aiohttp", "home-assistant"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Framework :: AsyncIO",
