@@ -110,6 +110,9 @@ INFO_API: Final = "SYNO.API.Info"
 
 # Error codes of the Synology Web API framework, shared by DSM and SRM.
 _SESSION_ERRORS: Final = frozenset({106, 107, 119})  # expired, duplicate login, invalid session id
+# Fresh logins after a session error, per read. SRM refuses some fresh sessions right away with
+# 119 (measured on an MR2200ac: 3 to 5 of 30 logins), so one more login is not always enough.
+_SESSION_RETRIES: Final = 3
 _UNSUPPORTED_ERRORS: Final = frozenset({102, 103, 104})  # no such API, method or version
 _PERMISSION_ERRORS: Final = frozenset({105})  # insufficient privilege; 117 is an internal error
 # Wrong credentials, disabled account, no permission, password expired or to be changed: all need
@@ -166,6 +169,17 @@ def _is_ipv6(host: str) -> bool:
         return False
 
 
+def _retrieve(attempt: asyncio.Future[Any]) -> None:
+    """Mark a shared attempt's error as seen.
+
+    Callers wait for an attempt through ``asyncio.shield``; when all of them were cancelled (for
+    example while an application shuts down), nobody reads the error, and asyncio would log
+    "exception was never retrieved".
+    """
+    if not attempt.cancelled():
+        attempt.exception()
+
+
 class SrmClient:
     """One authenticated session with one SRM device (router or access point).
 
@@ -180,9 +194,10 @@ class SrmClient:
     an ``SSLContext`` to be sure. ``otp_code`` is sent with the first login
     only; see :class:`aiosynologysrm.SrmTwoFactorRequiredError`.
 
-    SRM keeps one session per account and ``session_name``: a second login under the same name
-    ends the first one. Without a ``session_name`` each client gets its own random one; pass a
-    stable name (for example per application instance) to reuse it across restarts.
+    ``session_name`` names the session in SRM and in the debug log. Without one each client gets
+    its own random name; pass a stable one (for example per application instance) to recognise it
+    across restarts. SRM refuses some fresh sessions right away (119); a request then logs in
+    again, up to three times.
 
     After a failed login the client does not log in again on its own: every request raises the
     same error until :meth:`login` succeeds. Repeated failed logins would otherwise trip SRM's
@@ -329,6 +344,7 @@ class SrmClient:
     async def _shared_login(self) -> None:
         if self._login_attempt is None:
             self._login_attempt = asyncio.ensure_future(self._login_or_remember())
+            self._login_attempt.add_done_callback(_retrieve)
         attempt = self._login_attempt
         try:
             await asyncio.shield(attempt)
@@ -437,6 +453,7 @@ class SrmClient:
             return self._catalog
         if self._catalog_attempt is None:
             self._catalog_attempt = asyncio.ensure_future(self._load_catalog())
+            self._catalog_attempt.add_done_callback(_retrieve)
         attempt = self._catalog_attempt
         try:
             return await asyncio.shield(attempt)
@@ -500,15 +517,16 @@ class SrmClient:
         if version is None:
             raise SrmUnsupportedError(104, spec.api)
         sid = await self._ensure_login()
-        session_retried = catalog_reloaded = False
+        session_logins = 0
+        catalog_reloaded = False
         while True:
             envelope = await self._post("entry.cgi", {**self._form(spec, version), "_sid": sid})
             if envelope["success"]:
                 return envelope.get("data")
             code = self._error_code(envelope)
-            if code in _SESSION_ERRORS and not session_retried:
+            if code in _SESSION_ERRORS and session_logins < _SESSION_RETRIES:
                 _LOGGER.debug("Session ended (%s), logging in again", code)
-                session_retried = True
+                session_logins += 1
                 sid = await self._ensure_login(stale_sid=sid)
                 continue
             if code in _UNSUPPORTED_ERRORS and not catalog_reloaded:

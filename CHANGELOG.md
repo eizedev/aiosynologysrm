@@ -6,6 +6,28 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- After a session error (106, 107, 119), a request logs in again up to three times instead of
+  once: SRM refuses some fresh sessions right away (measured 3 to 5 of 30 logins).
+- `aiosynologysrm-diagnostics` asks to compare the fingerprint with the certificate a browser
+  shows, instead of naming a page in SRM that does not show it.
+
+### Fixed
+
+- The design page said a second login under the same session name ends the first; measured
+  again, both stay valid, and the 119 seen then was SRM refusing a fresh session.
+- An error of a shared login or catalog attempt that no caller waits for any more is no longer
+  logged as "exception was never retrieved".
+- The source distribution contains CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, the lock file and the
+  build constraints.
+
+### Added
+
+- Getting started: what to do with a certificate from a public CA, and what confirming a
+  fingerprint proves.
+- CI uses a uv version from a range in `pyproject.toml` instead of the latest.
+
 ## [0.7.0] - 2026-10-25
 
 ### Added

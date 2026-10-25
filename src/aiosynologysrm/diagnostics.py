@@ -188,7 +188,9 @@ def _trust(args: argparse.Namespace) -> bool | aiohttp.Fingerprint:
             )
         )
         print(f"Certificate fingerprint (SHA-256): {fingerprint}", file=sys.stderr)
-        print("Compare it with SRM: Control Panel > Security > Certificate.", file=sys.stderr)
+        print(
+            "Compare it with the certificate your browser shows for this router.", file=sys.stderr
+        )
         # The question goes to stderr like the rest, so `> report.json` captures only the report.
         print("Trust it? [y/N] ", end="", file=sys.stderr, flush=True)
         if not sys.stdin.isatty() or sys.stdin.readline().strip().lower() != "y":

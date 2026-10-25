@@ -24,6 +24,7 @@ from aiosynologysrm import (
     SrmTimeoutError,
     SrmTwoFactorRequiredError,
 )
+from aiosynologysrm.client import _retrieve
 
 from .conftest import PASSWORD, FakeSrm
 
@@ -306,3 +307,16 @@ def test_api_errors_survive_pickle_and_copy(error: SrmApiError) -> None:
     for clone in (pickle.loads(pickle.dumps(error)), copy.copy(error)):  # noqa: S301 - own data
         assert type(clone) is type(error)
         assert (clone.code, clone.api, str(clone)) == (error.code, error.api, str(error))
+
+
+async def test_errors_of_shared_attempts_are_always_retrieved() -> None:
+    # Everyone waiting for a shared login or catalog attempt can be cancelled; the attempt's error
+    # must still count as retrieved, or asyncio logs "exception was never retrieved".
+    loop = asyncio.get_running_loop()
+    failed: asyncio.Future[None] = loop.create_future()
+    failed.set_exception(SrmApiError(400))
+    _retrieve(failed)
+    assert failed._log_traceback is False
+    cancelled: asyncio.Future[None] = loop.create_future()
+    cancelled.cancel()
+    _retrieve(cancelled)  # nothing to retrieve, and no error raised
