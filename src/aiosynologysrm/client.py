@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import ipaddress
 import json
 import logging
@@ -99,7 +98,9 @@ DEFAULT_HTTPS_PORT: Final = 8001
 DEFAULT_HTTP_PORT: Final = 8000
 DEFAULT_TIMEOUT: Final = 30.0
 DEFAULT_MAX_CONCURRENCY: Final = 2
-MAX_RESPONSE_BYTES: Final = 16 * 1024 * 1024
+# The largest answers seen (client and firewall lists) are a few hundred KB. JSON of this size
+# can still take many times its bytes in memory, so the limit stays well below what is needed.
+MAX_RESPONSE_BYTES: Final = 4 * 1024 * 1024
 
 AUTH_API: Final = "SYNO.API.Auth"
 AUTH_VERSIONS: Final = (
@@ -217,11 +218,17 @@ class SrmClient:
         timeout: float = DEFAULT_TIMEOUT,
         otp_code: str | None = None,
         max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
+        max_response_bytes: int = MAX_RESPONSE_BYTES,
         session_name: str | None = None,
     ) -> None:
         """Prepare the client; nothing is sent until the first request."""
         if not _valid_host(host):
             msg = "host must be a host name or an IP address, without port, path or user"
+            raise ValueError(msg)
+        if not use_https and isinstance(ssl, (SSLContext, aiohttp.Fingerprint)):
+            # A pin or a context does nothing over HTTP; the password would go out unprotected
+            # although the caller asked for a checked connection.
+            msg = "ssl (a fingerprint or an SSLContext) needs use_https=True"
             raise ValueError(msg)
         if port is None:
             port = DEFAULT_HTTPS_PORT if use_https else DEFAULT_HTTP_PORT
@@ -234,6 +241,7 @@ class SrmClient:
         self._session = session
         self._ssl = ssl
         self._timeout = aiohttp.ClientTimeout(total=timeout)
+        self._max_response_bytes = max_response_bytes
         self._session_name = session_name or f"aiosynologysrm-{secrets.token_hex(4)}"
         self._sid: str | None = None
         self._semaphore = asyncio.Semaphore(max(1, max_concurrency))
@@ -293,7 +301,7 @@ class SrmClient:
                 body = bytearray()
                 async for chunk in response.content.iter_chunked(64 * 1024):
                     body.extend(chunk)
-                    if len(body) > MAX_RESPONSE_BYTES:
+                    if len(body) > self._max_response_bytes:
                         raise SrmResponseError("Response too large")
         # The message names only the error type; the chained aiohttp exception keeps the details
         # (host, port, reason). Credentials and session ids travel in the body, never in a URL.
@@ -331,8 +339,14 @@ class SrmClient:
         expired, or with a fresh two-factor code once a session ended.
         """
         if self._login_attempt is not None:  # let a login in progress finish first
-            with contextlib.suppress(SrmError):
+            try:
                 await asyncio.shield(self._login_attempt)
+            except (SrmAuthenticationError, SrmBlockedError):
+                # It failed for a reason only the user can fix; trying again at once would only
+                # count one more failed login towards SRM's auto block.
+                raise
+            except SrmError:
+                pass
         self._login_failure = None
         if otp_code:
             self._otp_code = otp_code

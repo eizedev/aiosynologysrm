@@ -15,16 +15,16 @@ from .conftest import MR2200AC, RT2600AC, load
 @pytest.mark.parametrize(
     ("value", "scope"),
     [
-        ("100.70.1.2", "cgnat"),
+        ("100.70.1.2", "cgnat"),  # example address of its class
         ("192.168.1.1", "private"),
-        ("10.0.0.1", "private"),
+        ("10.0.0.1", "private"),  # example address of its class
         ("fd00::1", "private"),
-        ("8.8.8.8", "public"),
-        ("2001:4860::1", "public"),
+        ("8.8.8.8", "public"),  # example address of its class
+        ("2001:4860::1", "public"),  # example address of its class
         ("fe80::1%eth0", "link_local"),
         ("127.0.0.1", "other"),
         ("192.0.2.1", "other"),  # documentation range
-        ("198.18.0.1", "other"),  # benchmarking range
+        ("198.18.0.1", "other"),  # example address of its class: benchmarking range
         ("0.0.0.0", None),  # noqa: S104 - no address
         ("::", None),
         ("not an address", None),

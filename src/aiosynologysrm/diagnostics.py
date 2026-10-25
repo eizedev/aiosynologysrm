@@ -117,8 +117,8 @@ async def collect_diagnostics(client: SrmClient, *, counts: bool = True) -> dict
     """
     report: dict[str, Any] = {"library": __version__}
     try:
-        # Reuses a session and respects a remembered failed login, so a diagnostics download
-        # never adds a login attempt towards SRM's auto block.
+        # Logs in once if there is no session yet, and respects a remembered failed login: a
+        # wrong password is not tried again for the report.
         await client._ensure_login()
         catalog = await client.get_catalog()
     except SrmError as err:

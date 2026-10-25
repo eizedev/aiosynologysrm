@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import copy
 import logging
 import pickle
@@ -320,3 +321,53 @@ async def test_errors_of_shared_attempts_are_always_retrieved() -> None:
     cancelled: asyncio.Future[None] = loop.create_future()
     cancelled.cancel()
     _retrieve(cancelled)  # nothing to retrieve, and no error raised
+
+
+def test_a_pin_needs_https(http: aiohttp.ClientSession) -> None:
+    for ssl in (aiohttp.Fingerprint(b"a" * 32), __import__("ssl").create_default_context()):
+        with pytest.raises(ValueError, match="needs use_https"):
+            SrmClient("198.51.100.7", "u", "p", session=http, use_https=False, ssl=ssl)
+
+
+async def test_login_does_not_repeat_a_login_that_just_failed(
+    fake: FakeSrm, make_client: MakeClient
+) -> None:
+    # A read starts a login with a wrong password; login() called meanwhile waits for it and
+    # reports its failure instead of sending a second wrong login.
+    client = make_client(password="wrong")
+    await client.get_catalog()
+    fake.delay = 0.2
+    read = asyncio.ensure_future(client.get_system_info())
+    while client._login_attempt is None:  # noqa: ASYNC110 - private state, no event to wait for
+        await asyncio.sleep(0.01)
+    with pytest.raises(SrmAuthenticationError):
+        await client.login()
+    with pytest.raises(SrmAuthenticationError):
+        await read
+    logins = [r for r in fake.requests if r.get("method") == "login"]
+    assert len(logins) == 1
+
+
+async def test_login_tries_again_after_a_passing_error(
+    fake: FakeSrm, make_client: MakeClient
+) -> None:
+    # An error that may be temporary (not remembered) does not stop login() from trying.
+    client = make_client()
+    await client.get_catalog()
+    answer = fake.auth
+
+    def first_login_fails(form: dict[str, str]) -> Any:
+        if form.get("method") == "login" and not fake.logins:
+            fake.logins = -1  # count this one as answered
+            return fake.fail(117)
+        return answer(form)
+
+    fake.auth = first_login_fails  # type: ignore[method-assign]
+    fake.delay = 0.1
+    read = asyncio.ensure_future(client.get_system_info())
+    while client._login_attempt is None:  # noqa: ASYNC110 - private state, no event to wait for
+        await asyncio.sleep(0.01)
+    await client.login()  # the read's login fails with 117; this one tries again
+    assert client.logged_in
+    with contextlib.suppress(SrmError):
+        await read

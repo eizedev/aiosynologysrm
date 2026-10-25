@@ -357,13 +357,10 @@ async def test_body_arriving_in_pieces(fake: FakeSrm, make_client: MakeClient) -
     assert len(devices.devices) == 70
 
 
-async def test_body_over_the_limit(
-    fake: FakeSrm, make_client: MakeClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr("aiosynologysrm.client.MAX_RESPONSE_BYTES", 5000)
+async def test_body_over_the_limit(fake: FakeSrm, make_client: MakeClient) -> None:
     fake.chunked = True
     with pytest.raises(SrmResponseError, match="too large"):
-        await make_client().get_network_devices()
+        await make_client(max_response_bytes=5000).get_network_devices()
 
 
 async def test_supports_a_getter(fake: FakeSrm, make_client: MakeClient) -> None:

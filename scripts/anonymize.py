@@ -212,6 +212,51 @@ NAME_KEYS = frozenset(
     }
 )
 # Keys whose numbers are kept: counters, sizes, ids SRM assigns. Any other number stops the script.
+# Keys whose values are true, false or null. A key with such a value is a field name only if it
+# is listed here: a map from names to flags would otherwise pass unchanged.
+FLAG_KEYS = frozenset(
+    {
+        "allow_auto_switch_dfs",
+        "blinking",
+        "bridge_mode_forbidden",
+        "dmz_auto_fw_rules",
+        "downgrade_usb_3.0",
+        "enable",
+        "enable_5_9g_compatibility_mode",
+        "enable_auto_switch_5_9g",
+        "enable_port_check",
+        "enabled",
+        "enabled_ntp",
+        "exceed_dev_list_max",
+        "has_link",
+        "has_wifi_dongle",
+        "is_baned",
+        "is_beamforming_on",
+        "is_dual_band",
+        "is_guest",
+        "is_high_qos",
+        "is_low_qos",
+        "is_manual_dev_type",
+        "is_manual_hostname",
+        "is_online",
+        "is_qos",
+        "is_wireless",
+        "logged",
+        "pf_auto_fw_rules",
+        "pppoe",
+        "readonly",
+        "single_volume",
+        "support_custom_topology",
+        "support_force_ethernet",
+        "support_net_topology",
+        "switching",
+        "upnp_auto_fw_rules",
+        "use_host_dns",
+        "wireless_repeating",
+        "wireless_repeating_mode_forbidden",
+    }
+)
+
 NUMBER_KEYS = frozenset(
     {
         "15min_load",
@@ -318,6 +363,7 @@ class Anonymizer:
         self.unknown: set[str] = set()
         self.unknown_values: set[str] = set()
         self.unknown_numbers: set[str] = set()
+        self.unknown_flags: set[str] = set()
         self.odd_keys = 0
         self.keyless = 0
         self.originals: set[str] = set()
@@ -511,8 +557,14 @@ class Anonymizer:
             return result
         if isinstance(value, list):
             return [self.walk(v, key) for v in value]
+        return self._scalar(value, key)
+
+    def _scalar(self, value: Any, key: str) -> Any:
+        """Anonymize a text, number, flag or null under its key."""
         if isinstance(value, str):
             return self._string(key, value)
+        if (value is None or isinstance(value, bool)) and key.lower() not in FLAG_KEYS:
+            self._note(self.unknown_flags, key)
         if isinstance(value, (int, float)) and not isinstance(value, bool):
             if SECRET_KEYS.search(key):
                 return 0
@@ -544,6 +596,11 @@ class Anonymizer:
         if self.unknown_numbers:
             names = ", ".join(sorted(self.unknown_numbers))
             problems.append(f"numbers under unclassified keys ({names}): add each to NUMBER_KEYS")
+        if self.unknown_flags:
+            names = ", ".join(sorted(self.unknown_flags))
+            problems.append(
+                f"true, false or null under unclassified keys ({names}): add to FLAG_KEYS"
+            )
         if self.odd_keys:
             problems.append(
                 f"{self.odd_keys} keys that are no known field or container (could be names); "
@@ -556,7 +613,9 @@ class Anonymizer:
 
 
 KEY_MARK = "\0key"  # marks a dict key in _values()
-CLASSIFIED_KEYS = KEEP_KEYS | ADDRESS_KEYS | NAME_KEYS | NUMBER_KEYS | PORT_KEYS | {"time_zone"}
+CLASSIFIED_KEYS = (
+    KEEP_KEYS | ADDRESS_KEYS | NAME_KEYS | NUMBER_KEYS | PORT_KEYS | FLAG_KEYS | {"time_zone"}
+)
 
 
 def _values(value: Any, key: str = "") -> list[tuple[str, str]]:
@@ -610,7 +669,10 @@ def main() -> int:
         return 1
     for (_, target), result in zip(pairs, results, strict=True):
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(json.dumps(result, indent=2, ensure_ascii=False, sort_keys=True) + "\n")
+        target.write_text(
+            json.dumps(result, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
     print(
         f"{len(pairs)} file(s): {len(anonymizer.macs)} MACs, {len(anonymizer.ipv4)} IPv4, "
         f"{len(anonymizer.ipv6)} IPv6, {len(anonymizer.duids)} DUIDs, "
