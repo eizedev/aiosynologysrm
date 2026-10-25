@@ -7,6 +7,7 @@ import contextlib
 import ipaddress
 import json
 import logging
+import secrets
 from collections.abc import Awaitable, Callable, Mapping
 from ssl import SSLContext
 from types import TracebackType
@@ -179,6 +180,10 @@ class SrmClient:
     an ``SSLContext`` to be sure. ``otp_code`` is sent with the first login
     only; see :class:`aiosynologysrm.SrmTwoFactorRequiredError`.
 
+    SRM keeps one session per account and ``session_name``: a second login under the same name
+    ends the first one. Without a ``session_name`` each client gets its own random one; pass a
+    stable name (for example per application instance) to reuse it across restarts.
+
     After a failed login the client does not log in again on its own: every request raises the
     same error until :meth:`login` succeeds. Repeated failed logins would otherwise trip SRM's
     auto block and lock this host out of the router.
@@ -197,7 +202,7 @@ class SrmClient:
         timeout: float = DEFAULT_TIMEOUT,
         otp_code: str | None = None,
         max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
-        session_name: str = "aiosynologysrm",
+        session_name: str | None = None,
     ) -> None:
         """Prepare the client; nothing is sent until the first request."""
         if not _valid_host(host):
@@ -214,7 +219,7 @@ class SrmClient:
         self._session = session
         self._ssl = ssl
         self._timeout = aiohttp.ClientTimeout(total=timeout)
-        self._session_name = session_name
+        self._session_name = session_name or f"aiosynologysrm-{secrets.token_hex(4)}"
         self._sid: str | None = None
         self._semaphore = asyncio.Semaphore(max(1, max_concurrency))
         self._catalog: dict[str, Mapping[str, Any]] | None = None
@@ -388,7 +393,7 @@ class SrmClient:
         if not isinstance(sid, str) or not sid:
             raise SrmResponseError("Login answer has no session id")
         self._sid = sid
-        _LOGGER.debug("Logged in to %s", self._base_url)
+        _LOGGER.debug("Logged in to %s as session %s", self._base_url, self._session_name)
 
     async def logout(self) -> None:
         """End the session; errors are ignored because the session expires anyway."""

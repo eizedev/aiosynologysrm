@@ -23,8 +23,13 @@ looks like "safe to call". On an RT2600ac with SRM 1.3.2 that flag also sits on 
   catalog (3 or 2); only when the catalog cannot be read does it try 3, without remembering that.
   A router that cannot be reached fails at the catalog, before any login is sent.
 - When the router reports an ended session (codes 106, 107, 119), the client logs in once more
-  and repeats the request. Concurrent requests share one login. Two clients with the same
-  `session_name` do not end each other's sessions (checked on SRM 1.3.2).
+  and repeats the request. Concurrent requests share one login.
+- SRM keeps one session per account and session name: a second login with the same account and
+  the same `session_name` ends the first session, whose next request gets 119 (measured on an
+  MR2200ac with SRM 1.3.2). Different names coexist, and logging out one leaves the others. So
+  each client gets a random `session_name` unless one is passed; an application passes a stable
+  name per instance, and two instances must not share it. The debug log names the session at
+  every login, which shows which client keeps losing its session.
 - A failed login is remembered: every following request raises the same error without contacting
   the router, until `login()` is called again. Concurrent reads therefore cost one failed attempt,
   not one each, and a wrong password cannot run into SRM's auto block (by default 10 attempts in
@@ -53,7 +58,7 @@ keeps (DSM and SRM share the Web API framework), plus what SRM itself shows.
 |---|---|---|---|
 | 102, 103, 104 | API, method or version does not exist | `SrmUnsupportedError`; for a version the catalog offered, the catalog is read again once first (firmware update) | 103 seen |
 | 105 | insufficient user privilege | `SrmPermissionError` | no |
-| 106, 107, 119 | session expired, ended by a duplicate login, invalid session id | logged in again once | two logins with the same session name do not cause 107 |
+| 106, 107, 119 | session expired, ended by a duplicate login, invalid session id | logged in again once | 119 seen after a second login with the same account and session name |
 | 114 | missing required parameters | `SrmApiError` | seen |
 | 117 | unknown internal error | `SrmApiError` | no |
 | 400, 401, 402, 408, 409, 410 | wrong account or password, disabled account, no permission, password expired or to be changed | `SrmAuthenticationError` (remembered) | no |

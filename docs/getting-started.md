@@ -1,7 +1,7 @@
 # Getting started
 
-You need Python 3.12 or newer and an SRM **administrator** account (SRM's Web API only answers
-administrators; a dedicated account for your integration is a good idea).
+You need Python 3.12 or newer and an SRM **administrator** account: only administrator accounts
+are tested (SRM 1.3.2). A dedicated account per application is a good idea.
 
 The library only reads, but the account it uses can change everything on the router: keep the
 password safe, and prefer certificate pinning over `ssl=False` (see below). Each failed login

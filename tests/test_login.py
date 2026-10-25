@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import logging
+import pickle
 from collections.abc import Callable
 from typing import Any
 
@@ -18,6 +20,7 @@ from aiosynologysrm import (
     SrmConnectionError,
     SrmError,
     SrmResponseError,
+    SrmSessionError,
     SrmTimeoutError,
     SrmTwoFactorRequiredError,
 )
@@ -271,3 +274,35 @@ async def test_login_waits_for_a_login_in_progress(fake: FakeSrm, make_client: M
     assert client.logged_in
     assert _logins(fake) == 2
     assert fake.logouts == 1  # the session the automatic login opened is closed again
+
+
+async def test_each_client_gets_its_own_session_name(
+    fake: FakeSrm, make_client: MakeClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    # SRM ends a session when the same account logs in again under the same name.
+    caplog.set_level(logging.DEBUG, logger="aiosynologysrm")
+    first, second = make_client(), make_client()
+    await first.login()
+    await second.login()
+    names = [form["session"] for form in fake.requests if form.get("method") == "login"]
+    assert len(names) == 2
+    assert names[0] != names[1]
+    assert all(name.startswith("aiosynologysrm-") for name in names)
+    assert f"as session {names[0]}" in caplog.text
+
+
+async def test_a_given_session_name_is_used(fake: FakeSrm, make_client: MakeClient) -> None:
+    await make_client(session_name="HomeAssistant-1234abcd").login()
+    assert [f["session"] for f in fake.requests if f.get("method") == "login"] == [
+        "HomeAssistant-1234abcd"
+    ]
+
+
+@pytest.mark.parametrize(
+    "error",
+    [SrmApiError(119, "SYNO.Core.System"), SrmSessionError(119), SrmAuthenticationError(400)],
+)
+def test_api_errors_survive_pickle_and_copy(error: SrmApiError) -> None:
+    for clone in (pickle.loads(pickle.dumps(error)), copy.copy(error)):  # noqa: S301 - own data
+        assert type(clone) is type(error)
+        assert (clone.code, clone.api, str(clone)) == (error.code, error.api, str(error))

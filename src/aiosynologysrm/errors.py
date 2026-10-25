@@ -41,6 +41,10 @@ class SrmApiError(SrmError):
         where = f" ({api})" if api else ""
         super().__init__(f"SRM API error {code}{where}")
 
+    def __reduce__(self) -> tuple[type[SrmApiError], tuple[int, str | None]]:
+        """Rebuild from code and API, so the error survives pickle and copy."""
+        return (type(self), (self.code, self.api))
+
 
 class SrmAuthenticationError(SrmApiError):
     """Login failed for a reason only the user can fix.

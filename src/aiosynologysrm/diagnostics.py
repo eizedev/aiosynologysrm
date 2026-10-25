@@ -175,6 +175,9 @@ def _parser() -> argparse.ArgumentParser:
 
 def _trust(args: argparse.Namespace) -> bool | aiohttp.Fingerprint:
     """Return the ``ssl`` argument for the client; an unknown certificate needs confirmation."""
+    if args.http and args.fingerprint:
+        msg = "--fingerprint needs HTTPS; leave out --http"
+        raise SystemExit(msg)
     if args.http or args.insecure:
         return False
     fingerprint = args.fingerprint

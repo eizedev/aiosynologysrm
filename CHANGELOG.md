@@ -10,6 +10,23 @@ All notable changes to this project are documented here. The format follows
 
 - README and website link the Home Assistant integration built on the library.
 - Documentation website at https://aiosynologysrm.eize.dev/, built from `docs/`; the README is shorter and links to it.
+- The debug log names the session at every login, so it shows which client loses its session.
+
+### Changed
+
+- Without a `session_name`, each `SrmClient` logs in under its own random name
+  (`aiosynologysrm-` and 8 hex digits) instead of the shared `aiosynologysrm`: SRM ends a session
+  when the same account logs in again under the same name.
+- The README and the website say that only administrator accounts are tested, instead of stating
+  that SRM answers administrators only.
+
+### Fixed
+
+- `SrmApiError` and its subclasses survive `pickle` and `copy`.
+- `aiosynologysrm-diagnostics` refuses `--fingerprint` together with `--http` instead of ignoring it.
+- The design page said two logins under the same session name do not disturb each other; measured,
+  the second ends the first.
+- Package keywords name only the tested models.
 
 ## [0.6.0] - 2026-10-24
 
