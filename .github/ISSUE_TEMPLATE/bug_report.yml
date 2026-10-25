@@ -43,6 +43,7 @@ body:
     id: code
     attributes:
       label: Code and error (redacted)
+      description: A traceback names the router's address (host and port); replace it, and any passwords, before you paste.
       render: python
   - type: textarea
     id: diagnostics

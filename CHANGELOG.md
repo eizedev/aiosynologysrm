@@ -6,6 +6,28 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- `aiohttp>=3.14.4`: older versions have published security advisories (Home Assistant 2026.10
+  uses 3.14.5).
+- Answers larger than 4 MiB are refused (was 16 MiB); `max_response_bytes` changes the limit.
+- `use_https=False` together with a fingerprint or an `SSLContext` raises `ValueError` instead of
+  ignoring the pin.
+
+### Fixed
+
+- `login()` that waits for a login under way no longer sends a second failed login when the
+  first failed for a reason only the user can fix.
+- The anonymizer refuses keys it does not know that hold true, false or null (`FLAG_KEYS`);
+  before, a name used as such a key passed unchanged. It writes UTF-8 on every OS.
+- The bug report template asks to replace the router's address in tracebacks; the model report
+  template lists the getters that exist.
+- The docs say that tracebacks name the router's host and port.
+
+### Added
+
+- A test that fails on MAC, IPv4 or IPv6 addresses in the repository that are not placeholders.
+
 ## [0.7.1] - 2026-10-25
 
 ### Changed

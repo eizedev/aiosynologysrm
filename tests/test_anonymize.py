@@ -183,6 +183,9 @@ def test_main_refuses_and_writes(tmp_path: Path, capsys: pytest.CaptureFixture[s
         ({"model": "Annas Laptop"}, "new values under kept or address keys (model)"),
         ({"firmware_ver": "custom build"}, "new values under kept or address keys (firmware_ver)"),
         ({"pin": 1234}, "numbers under unclassified keys (pin)"),
+        # Names as keys of flags: a field-like name is listed, anything else is counted.
+        ({"devices": [{"alices_laptop": True}]}, "true, false or null under unclassified keys"),
+        ({"Alice's laptop": None}, "keys that are no known field or container"),
     ],
 )
 def test_unknown_keys_values_and_numbers_are_refused(data: dict[str, Any], problem: str) -> None:

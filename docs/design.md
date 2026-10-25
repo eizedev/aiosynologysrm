@@ -36,7 +36,9 @@ looks like "safe to call". On an RT2600ac with SRM 1.3.2 that flag also sits on 
 - A failed login is remembered: every following request raises the same error without contacting
   the router, until `login()` is called again. Concurrent reads therefore cost one failed attempt,
   not one each, and a wrong password cannot run into SRM's auto block (by default 10 attempts in
-  5 minutes) on its own.
+  5 minutes) on its own. A `login()` that waits for a login already under way and sees it fail
+  for a reason only the user can fix (credentials, block) reports that failure instead of
+  sending a second one.
 - `async with SrmClient(...)` logs out at the end; otherwise call `logout()`.
 - The aiohttp session is passed in and never closed by the client.
 - A two-factor code is sent with one login only, whether it was accepted or not. Codes are valid
@@ -93,7 +95,9 @@ client uses the highest one the router offers. If there is none, the call is not
 ## Concurrency
 
 SRM routers are slow, around half a second per call on an RT2600ac. The client limits parallel
-requests (`max_concurrency`, default 2) so it does not swamp the router.
+requests (`max_concurrency`, default 2) so it does not swamp the router. An answer larger than
+`max_response_bytes` (default 4 MiB; the largest real answers are a few hundred KB) is refused
+before it is parsed, which bounds the memory a broken or hostile router can make the client use.
 
 ## Privacy
 
@@ -103,14 +107,19 @@ requests (`max_concurrency`, default 2) so it does not swamp the router.
   the response body. Connection errors keep aiohttp's exception as their cause, which can name
   the host and port; that is useful for diagnosis and holds no credentials.
 - With `use_https=False` the password crosses the network unencrypted; the client logs a warning
-  when it is created that way.
+  when it is created that way, and refuses a fingerprint or an `SSLContext` together with it,
+  since neither would protect anything over HTTP.
 - Test fixtures are real router answers made anonymous by
   [`scripts/anonymize.py`](https://github.com/eizedev/aiosynologysrm/blob/main/scripts/anonymize.py). It works as an allowlist: every text field
   is either fixed vocabulary that stays, an address (MAC, IPv4, IPv6, DUID, host name) that gets
   a stable placeholder, or a name that is replaced as a whole. An unclassified field stops the
-  script. Port numbers, country codes and the time zone are replaced too, because together they
+  script, also one holding only true, false or null (a map from names to flags would otherwise
+  pass). Port numbers, country codes and the time zone are replaced too, because together they
   would describe one real network. The script refuses to write anything if an original value is
   left. What stays is the device type of each client and the firmware, which the tests need.
+- A test scans every file in the repository for MAC addresses, IPv4 and IPv6 addresses that are
+  not placeholders or documentation ranges, so nothing copied from a real network slips through
+  outside the fixtures either.
 
 ## Units
 

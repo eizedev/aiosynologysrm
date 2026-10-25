@@ -26,7 +26,7 @@ classifiers = [
     "Topic :: System :: Networking :: Monitoring",
     "Typing :: Typed",
 ]
-dependencies = ["aiohttp>=3.10"]
+dependencies = ["aiohttp>=3.14.4"]
 
 [project.scripts]
 aiosynologysrm-diagnostics = "aiosynologysrm.diagnostics:main"

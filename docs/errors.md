@@ -21,4 +21,4 @@ After a failed login (authentication, 2FA, blocked) the client sends no further 
 `timeout`; one read can chain catalog, login and a retry, so wrap a whole update in
 `asyncio.timeout()` if it must finish in a fixed time.
 
-Error messages never contain passwords or session data, so they are safe to log.
+Error messages never contain passwords or session data, so they are safe to log. A traceback also shows the chained aiohttp error, which names the router's host and port: replace that before you post a traceback in public.
