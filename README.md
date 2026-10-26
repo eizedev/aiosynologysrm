@@ -105,6 +105,11 @@ asyncio.run(main())
 - [Diagnostics](https://aiosynologysrm.eize.dev/diagnostics/): a report to attach to an issue, without personal data
 - [Compatibility](https://aiosynologysrm.eize.dev/compatibility/) and [Design](https://aiosynologysrm.eize.dev/design/)
 
+## Roadmap
+
+Planned work is grouped in [milestones](https://github.com/eizedev/aiosynologysrm/milestones): the next release,
+reports from devices the maintainer does not have, and a stable API (1.0) later.
+
 ## Contributing
 
 Reports with your router model and SRM version help most. See [CONTRIBUTING.md](https://github.com/eizedev/aiosynologysrm/blob/main/CONTRIBUTING.md);
