@@ -95,6 +95,13 @@ deliberately not a `SrmConnectionError`: retrying does not help, and code that r
 errors must not retry a changed certificate. An application asks the user to confirm the new
 fingerprint instead.
 
+A certificate from a public authority is verified like any other, with an `SSLContext`, and
+`server_hostname` names the host it must be valid for when the router is reached by its IP
+address (aiohttp's `server_hostname`; it also sets SNI). `get_certificate_names()` verifies the
+chain without the name and returns the certificate's DNS names and issuer, so an application can
+offer them; a `server_hostname` without a context that checks names is refused with `ValueError`,
+since it would be sent but never checked.
+
 ## Versions
 
 The router's API catalog (`SYNO.API.Info`, readable without login) lists each API with its

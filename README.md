@@ -71,7 +71,8 @@ import aiohttp
 from aiosynologysrm import SrmClient
 
 # SRM ships a self-signed certificate: pin its fingerprint (see "Getting started" in the
-# documentation for how to read it once and confirm it).
+# documentation for how to read it once and confirm it, and how to verify a Let's Encrypt
+# certificate by its name instead).
 FINGERPRINT = "<the router's SHA-256 fingerprint, hex>"
 
 

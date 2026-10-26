@@ -62,11 +62,29 @@ client = SrmClient(..., ssl=aiohttp.Fingerprint(bytes.fromhex(fingerprint)))
 A renewed certificate then raises `SrmCertificateError` until the new fingerprint is confirmed.
 `ssl` also takes `False` or an `ssl.SSLContext`. `ssl=True` uses the aiohttp session's own
 setting, so with a session that does not verify certificates nothing is checked; pin a fingerprint
-or pass an `SSLContext` instead. A router with a certificate from a public CA (for example Let's
-Encrypt) renews it every few months; pinning then means confirming each new fingerprint, so pass
-an `SSLContext` that verifies against the system's CAs instead. Confirming a fingerprint over the
-same network the client uses proves little against an attacker already in that network: compare
-it with what a browser shows on a device you trust.
+or pass an `SSLContext` instead. Confirming a fingerprint over the same network the client uses
+proves little against an attacker already in that network: compare it with what a browser shows
+on a device you trust.
+
+A router with a certificate from a public certificate authority (for example Let's Encrypt)
+renews it every few months; pinning would mean confirming each new fingerprint. Verify it against
+the authorities instead. The certificate names a host while the router is often reached by its IP
+address, so check it against one of its names:
+
+```python
+import ssl
+
+from aiosynologysrm import get_certificate_names
+
+# Raises SrmCertificateError if no certificate authority vouches for the certificate.
+certificate = await get_certificate_names("192.0.2.1")
+print(certificate.names, certificate.issuer)  # ('router.example.net',) Let's Encrypt (R11)
+context = ssl.create_default_context()  # reads files: create it once, outside the event loop
+client = SrmClient("192.0.2.1", ..., ssl=context, server_hostname=certificate.names[0])
+```
+
+Every connection then checks the chain and the name; renewals need nothing. Let the user confirm
+the name once, as with a fingerprint.
 
 Two-factor authentication works for interactive use only: `otp_code` is sent with the first login
 the router answers, and never again. When the session ends, the next login raises `SrmTwoFactorRequiredError` and

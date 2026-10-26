@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `get_certificate_names()` returns the DNS names and issuer of a certificate a certificate
+  authority vouches for, and `SrmClient(server_hostname=...)` checks the certificate against such
+  a name while the router is reached by its IP address. Routers with a Let's Encrypt certificate
+  can so be verified without confirming every renewal.
+- `get_certificate_fingerprint(server_hostname=...)`, the name to check with a verifying context.
+
 ## [0.7.3] - 2026-10-26
 
 ### Changed

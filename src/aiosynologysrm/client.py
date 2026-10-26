@@ -203,6 +203,10 @@ class SrmClient:
     an ``SSLContext`` to be sure. ``otp_code`` is sent with the first login
     only; see :class:`aiosynologysrm.SrmTwoFactorRequiredError`.
 
+    ``server_hostname`` is the name the certificate is checked against, for a router reached by
+    its IP address whose certificate from a public authority names a host (see
+    :func:`aiosynologysrm.get_certificate_names`). It needs a verifying ``SSLContext``.
+
     ``session_name`` names the session in SRM and in the debug log. Without one each client gets
     its own random name; pass a stable one (for example per application instance) to recognise it
     across restarts. SRM refuses some fresh sessions right away (119); a request then logs in
@@ -231,6 +235,7 @@ class SrmClient:
         max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
         max_response_bytes: int = MAX_RESPONSE_BYTES,
         session_name: str | None = None,
+        server_hostname: str | None = None,
     ) -> None:
         """Prepare the client; nothing is sent until the first request."""
         if not _valid_host(host):
@@ -240,6 +245,12 @@ class SrmClient:
             # A pin or a context does nothing over HTTP; the password would go out unprotected
             # although the caller asked for a checked connection.
             msg = "ssl (a fingerprint or an SSLContext) needs use_https=True"
+            raise ValueError(msg)
+        if server_hostname is not None and not (
+            use_https and isinstance(ssl, SSLContext) and ssl.check_hostname
+        ):
+            # Without a context that checks names, the name would be sent but never checked.
+            msg = "server_hostname needs use_https=True and an SSLContext that checks host names"
             raise ValueError(msg)
         if port is None:
             port = DEFAULT_HTTPS_PORT if use_https else DEFAULT_HTTP_PORT
@@ -251,6 +262,7 @@ class SrmClient:
         self._otp_code: str | None = otp_code
         self._session = session
         self._ssl = ssl
+        self._server_hostname = server_hostname
         self._timeout = aiohttp.ClientTimeout(total=timeout)
         self._max_response_bytes = max_response_bytes
         self._session_name = session_name or f"aiosynologysrm-{secrets.token_hex(4)}"
@@ -306,6 +318,7 @@ class SrmClient:
                     url,
                     data=dict(data),
                     ssl=self._ssl,
+                    server_hostname=self._server_hostname,
                     timeout=self._timeout,
                     allow_redirects=False,
                 ) as response,

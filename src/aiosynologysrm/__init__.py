@@ -80,7 +80,7 @@ from .network import (
     Topology,
 )
 from .reads import ReadSpec
-from .tls import get_certificate_fingerprint
+from .tls import CertificateNames, get_certificate_fingerprint, get_certificate_names
 
 try:
     from ._version import __version__
@@ -90,6 +90,7 @@ except ImportError:  # pragma: no cover - only in a source tree without a build
 __all__ = [
     "AllowSrmFromWan",
     "AutoBlock",
+    "CertificateNames",
     "ConnectionStatus",
     "ConnectionStatusEntry",
     "DhcpClient",
@@ -157,5 +158,6 @@ __all__ = [
     "WifiRadioStatus",
     "__version__",
     "get_certificate_fingerprint",
+    "get_certificate_names",
     "helpers",
 ]
