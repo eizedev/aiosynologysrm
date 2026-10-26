@@ -47,6 +47,9 @@ uv run mypy                   # strict
   design from eizedev/brand (`docs-site/`); `docs/assets/site.css` is copied in at build time and
   not committed. Preview: see "Documentation websites" in eizedev/brand's README.
 - Commit messages follow Conventional Commits.
+- **`.claude/settings.json`** keeps claude.ai session links out of commits and pull requests
+  (`attribution.sessionUrl: false`) and denies reads of secret files. Cloud sessions read only
+  this settings file, so keep these keys.
 
 ## Don'ts
 
