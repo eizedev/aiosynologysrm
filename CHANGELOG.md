@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-10-26
+
 ### Changed
 
 - After a read gave up on session errors (three fresh logins refused), reads raise
@@ -319,7 +321,8 @@ These names are gone; use the replacement on the right.
 - `scripts/anonymize.py` to turn real router answers into publishable test fixtures.
 - Fixtures from an RT2600ac with SRM 1.3.2.
 
-[Unreleased]: https://github.com/eizedev/aiosynologysrm/compare/v0.7.2...HEAD
+[Unreleased]: https://github.com/eizedev/aiosynologysrm/compare/v0.7.3...HEAD
+[0.7.3]: https://github.com/eizedev/aiosynologysrm/compare/v0.7.2...v0.7.3
 [0.7.2]: https://github.com/eizedev/aiosynologysrm/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/eizedev/aiosynologysrm/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/eizedev/aiosynologysrm/compare/v0.6.0...v0.7.0
