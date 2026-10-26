@@ -116,14 +116,17 @@ async def test_blocked_ip_address(fake: FakeSrm, make_client: MakeClient) -> Non
 
 
 async def test_unknown_login_codes_are_not_remembered(
-    fake: FakeSrm, make_client: MakeClient
+    fake: FakeSrm, make_client: MakeClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    clock = [1000.0]
+    monkeypatch.setattr("aiosynologysrm.client.time.monotonic", lambda: clock[0])
     fake.login_error = 117
     client = make_client()
     with pytest.raises(SrmApiError) as err:
         await client.get_system_info()
     assert type(err.value) is SrmApiError
     fake.login_error = None  # the router is back
+    clock[0] += 30  # after the pause
     assert (await client.get_system_info()).model == "RT2600ac"
 
 

@@ -5,8 +5,9 @@ are tested (SRM 1.3.2). A dedicated account per application is a good idea.
 
 The library only reads, but the account it uses can change everything on the router: keep the
 password safe, and prefer certificate pinning over `ssl=False` (see below). Each failed login
-counts towards SRM's auto block; after one, the client stops logging in by itself until you call
-`login()` again.
+counts towards SRM's auto block. After a wrong password, a missing two-factor code or a block, the
+client stops logging in by itself until you call `login()` again; after other login errors it
+pauses automatic logins for 30 seconds, doubling up to 15 minutes.
 
 ```sh
 pip install aiosynologysrm
@@ -68,6 +69,6 @@ same network the client uses proves little against an attacker already in that n
 it with what a browser shows on a device you trust.
 
 Two-factor authentication works for interactive use only: `otp_code` is sent with the first login
-and never again. When the session ends, the next login raises `SrmTwoFactorRequiredError` and
+the router answers, and never again. When the session ends, the next login raises `SrmTwoFactorRequiredError` and
 needs a fresh code. For unattended use (Home Assistant, scripts), create a dedicated administrator
 account without two-factor authentication.

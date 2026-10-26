@@ -6,6 +6,21 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-10-26
+
+### Changed
+
+- After a read gave up on session errors (three fresh logins refused), reads raise
+  `SrmSessionError` for 60 seconds without contacting the router, instead of logging in three
+  times per read. A working read or `login()` ends the pause.
+- Login errors that are not remembered (codes outside the credential, two-factor and block codes)
+  pause automatic logins for 30 seconds, doubling up to 15 minutes; `login()` always tries.
+
+### Fixed
+
+- A two-factor code is kept when its login got no answer (connection error or timeout), instead
+  of being lost before the request was sent.
+
 ## [0.7.2] - 2026-10-25
 
 ### Changed
@@ -306,7 +321,8 @@ These names are gone; use the replacement on the right.
 - `scripts/anonymize.py` to turn real router answers into publishable test fixtures.
 - Fixtures from an RT2600ac with SRM 1.3.2.
 
-[Unreleased]: https://github.com/eizedev/aiosynologysrm/compare/v0.7.2...HEAD
+[Unreleased]: https://github.com/eizedev/aiosynologysrm/compare/v0.7.3...HEAD
+[0.7.3]: https://github.com/eizedev/aiosynologysrm/compare/v0.7.2...v0.7.3
 [0.7.2]: https://github.com/eizedev/aiosynologysrm/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/eizedev/aiosynologysrm/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/eizedev/aiosynologysrm/compare/v0.6.0...v0.7.0

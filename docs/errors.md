@@ -10,11 +10,11 @@ Every error from talking to the router derives from `SrmError`; wrong arguments 
 | `SrmBlockedError` | the router blocks logins from this address after failed attempts; credentials may be fine | repair issue; call `login()` only after the user unblocked the address or the block expired (`get_auto_block().expire_day` days, `0` = never); every attempt counts towards the block |
 | `SrmCertificateError` | the certificate is not trusted or does not match the pinned fingerprint | reauth or repair: confirm the new fingerprint |
 | `SrmConnectionError` / `SrmTimeoutError` | the router could not be reached | `ConfigEntryNotReady` / `UpdateFailed` |
-| `SrmSessionError` | the router ended the session right after a new login | `UpdateFailed` |
+| `SrmSessionError` | the router ended the session right after a new login, three times; requests raise it for the next 60 seconds without contacting the router | `UpdateFailed` |
 | `SrmUnsupportedError` | this router or firmware does not offer the requested data | skip the entity (`supports()`) |
 | `SrmPermissionError` | the account may not use this API; SRM needs an administrator | repair issue |
 | `SrmResponseError` | the router answered with something that is not a valid Web API answer | `UpdateFailed` |
-| `SrmApiError` | any other code, including unknown login codes during a restart | `UpdateFailed` |
+| `SrmApiError` | any other code, including unknown login codes during a restart (automatic logins then pause, 30 seconds doubling up to 15 minutes) | `UpdateFailed` |
 
 After a failed login (authentication, 2FA, blocked) the client sends no further logins until
 `login()` is called, so polling cannot run into SRM's auto block. Each request has its own
