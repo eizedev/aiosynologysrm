@@ -62,6 +62,9 @@ uv run pytest --cov
   `python scripts/anonymize.py <raw.json> tests/fixtures/<model>-srm-<version>/<name>.json`.
   The script refuses to write anything when a text field is not classified yet (add it to one of
   its lists) or an original value is left; check the output by eye as well before committing.
+- `tests/test_privacy.py` fails on MAC and IP addresses that may be real, in the files and in
+  every line your unpushed commits add. Run the tests before you push: removing an address in a
+  later commit leaves it in the history, so fix the commit that added it instead.
 - **Models mirror SRM.** Name fields after SRM's keys (snake_case, see docs/design.md, "Data
   model"), keep SRM's units and formats, and put anything derived into `helpers.py`. Document a
   unit in the field's docstring only if you checked it on a router.

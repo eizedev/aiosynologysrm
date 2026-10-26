@@ -99,8 +99,10 @@ A certificate from a public authority is verified like any other, with an `SSLCo
 `server_hostname` names the host it must be valid for when the router is reached by its IP
 address (aiohttp's `server_hostname`; it also sets SNI). `get_certificate_names()` verifies the
 chain without the name and returns the certificate's DNS names and issuer, so an application can
-offer them; a `server_hostname` without a context that checks names is refused with `ValueError`,
-since it would be sent but never checked.
+tell whether a check by name applies. The name to check comes from the user, not from these
+names: a certificate from a public authority for someone else's name is just as valid. A
+`server_hostname` without a context that checks names is refused with `ValueError`, since it
+would be sent but never checked.
 
 ## Versions
 

@@ -19,9 +19,9 @@ class SrmTimeoutError(SrmConnectionError):
 
 
 class SrmCertificateError(SrmError):
-    """The router's TLS certificate failed verification or does not match the pinned fingerprint.
+    """The router's TLS certificate failed verification: not the pinned fingerprint, or not valid.
 
-    Not a connection error on purpose: retrying does not help. After a certificate renewal, fetch
+    Not a connection error on purpose: retrying does not help. After a certificate change, fetch
     the new fingerprint with :func:`aiosynologysrm.get_certificate_fingerprint` and let the user
     confirm it before trusting it (in Home Assistant: a reauth or repair flow).
     """

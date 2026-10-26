@@ -46,6 +46,9 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: uv sync --locked
       - run: uv run pytest --cov --cov-report=term-missing
+        env:
+          # Pull requests: also check every line their commits add (tests/test_privacy.py).
+          PRIVACY_BASE: ${{ github.base_ref && format('origin/{0}', github.base_ref) || '' }}
 
   lowest:
     name: Tests with the lowest supported dependencies

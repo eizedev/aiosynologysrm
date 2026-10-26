@@ -16,6 +16,16 @@ All notable changes to this project are documented here. The format follows
   can so be verified without confirming every renewal.
 - `get_certificate_fingerprint(server_hostname=...)`, the name to check with a verifying context.
 
+### Changed
+
+- The start of a pause of automatic logins or reads is logged (debug).
+
+### Fixed
+
+- A login answer without a session id pauses automatic logins like other login errors that may
+  pass, instead of a login on every read.
+- A two-factor code is not sent again after a login timed out: the router may have used it.
+
 ## [0.7.3] - 2026-10-26
 
 ### Changed

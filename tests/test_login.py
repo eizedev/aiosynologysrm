@@ -378,7 +378,7 @@ class Clock:
 
     def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self.now = 1000.0
-        monkeypatch.setattr("aiosynologysrm.client.time.monotonic", lambda: self.now)
+        monkeypatch.setattr("aiosynologysrm.client.monotonic", lambda: self.now)
 
 
 async def test_passing_login_errors_pause_automatic_logins(
@@ -408,6 +408,35 @@ async def test_passing_login_errors_pause_automatic_logins(
     assert client._login_backoff == 0  # a successful login resets the pause
 
 
+async def test_login_answers_without_session_pause_automatic_logins(
+    fake: FakeSrm, make_client: MakeClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    clock = Clock(monkeypatch)
+    fake.login_without_sid = True
+    client = make_client()
+    for _ in range(2):
+        with pytest.raises(SrmResponseError):
+            await client.get_system_info()
+    assert _logins(fake) == 1
+    fake.login_without_sid = False
+    clock.now += 30
+    assert (await client.get_system_info()).model == "RT2600ac"
+
+
+async def test_paused_logins_are_logged(
+    fake: FakeSrm,
+    make_client: MakeClient,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    Clock(monkeypatch)
+    fake.login_error = 117
+    caplog.set_level(logging.DEBUG, logger="aiosynologysrm")
+    with pytest.raises(SrmApiError):
+        await make_client().get_system_info()
+    assert "automatic logins pause for 30 s" in caplog.text
+
+
 async def test_session_errors_pause_reads(
     fake: FakeSrm, make_client: MakeClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -431,6 +460,28 @@ async def test_session_errors_pause_reads(
     await client.login()  # an explicit login ends the pause at once
     del fake.errors[("SYNO.Core.System", "info")]
     await client.get_system_info()
+
+
+async def test_a_code_is_dropped_after_a_timeout(
+    fake: FakeSrm, make_client: MakeClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake.require_otp = True
+    client = make_client(otp_code="123456")
+    await client.get_catalog()
+    post = client._post
+
+    async def slow(cgi: str, data: Any) -> Any:
+        if data.get("method") == "login":
+            raise SrmTimeoutError("No answer within the timeout")
+        return await post(cgi, data)
+
+    monkeypatch.setattr(client, "_post", slow)
+    with pytest.raises(SrmTimeoutError):
+        await client.login()
+    monkeypatch.setattr(client, "_post", post)
+    with pytest.raises(SrmTwoFactorRequiredError):
+        await client.login()  # the router may have used the code: not sent again
+    assert fake.requests[-1].get("otp_code") is None
 
 
 async def test_a_code_survives_a_login_without_answer(

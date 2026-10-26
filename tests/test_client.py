@@ -119,7 +119,7 @@ async def test_unknown_login_codes_are_not_remembered(
     fake: FakeSrm, make_client: MakeClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     clock = [1000.0]
-    monkeypatch.setattr("aiosynologysrm.client.time.monotonic", lambda: clock[0])
+    monkeypatch.setattr("aiosynologysrm.client.monotonic", lambda: clock[0])
     fake.login_error = 117
     client = make_client()
     with pytest.raises(SrmApiError) as err:

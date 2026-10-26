@@ -10,11 +10,14 @@ certificate a browser shows for the router's address), store it, and pass it on 
 
 A router with a certificate from a public certificate authority (for example Let's Encrypt)
 renews it every few months, and each renewal would need a new confirmation. Verify it against
-the certificate authorities instead, and against one of the names it was issued for, also when
-the router is reached by its IP address::
+the certificate authorities instead, and against the name the user reaches the router under,
+also when the router is reached by its IP address::
 
-    certificate = await get_certificate_names("192.0.2.1")  # raises if no CA vouches for it
-    client = SrmClient(..., ssl=verifying_context, server_hostname=certificate.names[0])
+    await get_certificate_names("192.0.2.1")  # raises if no CA vouches for the certificate
+    client = SrmClient(..., ssl=verifying_context, server_hostname=name_from_the_user)
+
+Take that name from the user, not from the certificate: a certificate from a public authority for
+someone else's name is just as valid.
 """
 
 from __future__ import annotations
@@ -76,9 +79,10 @@ async def get_certificate_names(
     """Return the names of the certificate ``host`` presents, if a certificate authority vouches.
 
     The chain is verified against the certificate authorities, not the name: the router is often
-    reached by its IP address, and the certificate names a host. Pass one of the returned names
-    as ``server_hostname`` to :class:`SrmClient` together with a verifying ``ssl`` context; every
-    connection then checks chain and name. Raises :class:`SrmCertificateError` when no
+    reached by its IP address, and the certificate names a host. The result tells whether a
+    check by name applies and what to show the user; the name passed as ``server_hostname`` to
+    :class:`SrmClient` (with a verifying ``ssl`` context) should come from the user, since any
+    valid certificate passes this function. Raises :class:`SrmCertificateError` when no
     certificate authority vouches for the certificate (SRM's own certificate, an expired one).
 
     ``ssl_context`` must verify certificates and must not check the host name; without one, a
