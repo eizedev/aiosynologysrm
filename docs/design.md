@@ -50,7 +50,8 @@ looks like "safe to call". On an RT2600ac with SRM 1.3.2 that flag also sits on 
 - `async with SrmClient(...)` logs out at the end; otherwise call `logout()`.
 - The aiohttp session is passed in and never closed by the client.
 - A two-factor code is sent with one login only, whether it was accepted or not. Only when that
-  login got no answer at all (a connection error or timeout) is it kept for the next one. Codes are valid
+  login failed with a connection error is it kept for the next one; after a timeout the router
+  may have used it, so it is dropped and the next login needs a fresh code. Codes are valid
   once, and repeating a rejected one counts towards SRM's auto block. A later login without a code
   raises `SrmTwoFactorRequiredError`, so unattended use needs an account without two-factor
   authentication. Trusted-device tokens, which would avoid this on DSM, are not implemented:

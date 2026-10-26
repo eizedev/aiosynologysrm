@@ -60,8 +60,9 @@ class SrmAuthenticationError(SrmApiError):
 class SrmTwoFactorRequiredError(SrmAuthenticationError):
     """The account has two-factor authentication enabled and a (new) code is needed.
 
-    A code is sent with one login only. When the session ends later, the next login needs a fresh
-    code, so unattended use needs an account without two-factor authentication.
+    A code is sent with one login only (kept only after a connection error; a timed-out login may
+    have used it). When the session ends later, the next login needs a fresh code, so unattended
+    use needs an account without two-factor authentication.
     """
 
 
