@@ -7,6 +7,7 @@ import ipaddress
 import json
 import logging
 import secrets
+import time
 from collections.abc import Awaitable, Callable, Mapping
 from ssl import SSLContext
 from types import TracebackType
@@ -114,6 +115,13 @@ _SESSION_ERRORS: Final = frozenset({106, 107, 119})  # expired, duplicate login,
 # Fresh logins after a session error, per read. SRM refuses some fresh sessions right away with
 # 119 (measured on an MR2200ac: 3 to 5 of 30 logins), so one more login is not always enough.
 _SESSION_RETRIES: Final = 3
+# After a read gave up on session errors, reads fail at once for this long instead of logging in
+# again; a router that refuses every session would otherwise get three logins per read.
+_SESSION_COOLDOWN: Final = 60.0
+# After a login error that may pass (not remembered), automatic logins pause this long, doubling
+# with each further failure up to the maximum. An explicit login() always tries.
+_LOGIN_BACKOFF: Final = 30.0
+_LOGIN_BACKOFF_MAX: Final = 900.0
 _UNSUPPORTED_ERRORS: Final = frozenset({102, 103, 104})  # no such API, method or version
 _PERMISSION_ERRORS: Final = frozenset({105})  # insufficient privilege; 117 is an internal error
 # Wrong credentials, disabled account, no permission, password expired or to be changed: all need
@@ -198,11 +206,14 @@ class SrmClient:
     ``session_name`` names the session in SRM and in the debug log. Without one each client gets
     its own random name; pass a stable one (for example per application instance) to recognise it
     across restarts. SRM refuses some fresh sessions right away (119); a request then logs in
-    again, up to three times.
+    again, up to three times. When that is not enough, requests raise :class:`SrmSessionError`
+    without logging in for a minute.
 
-    After a failed login the client does not log in again on its own: every request raises the
-    same error until :meth:`login` succeeds. Repeated failed logins would otherwise trip SRM's
-    auto block and lock this host out of the router.
+    After a failed login that needs the user (credentials, two-factor, auto block) the client does
+    not log in again on its own: every request raises the same error until :meth:`login`
+    succeeds. Repeated failed logins would otherwise trip SRM's auto block and lock this host out
+    of the router. Other login errors pause automatic logins for 30 seconds, doubling up to 15
+    minutes.
     """
 
     def __init__(
@@ -255,6 +266,13 @@ class SrmClient:
         # The failed login's class, code and API; a fresh exception is raised from it each time,
         # so no traceback (with the password in a frame) is kept or grows.
         self._login_failure: tuple[type[SrmApiError], int, str | None] | None = None
+        # The last login error that may pass, and when automatic logins may try again.
+        self._passing_failure: tuple[type[SrmApiError], int, str | None] | None = None
+        self._login_backoff = 0.0
+        self._login_retry_at = 0.0
+        # The session error a read gave up on, and until when reads fail without logging in.
+        self._session_failure: tuple[int, str | None] | None = None
+        self._session_retry_at = 0.0
         if not use_https and host not in _WARNED_HTTP:
             _WARNED_HTTP.add(host)
             _LOGGER.warning("Connecting to %s over plain HTTP: the password is not encrypted", host)
@@ -347,7 +365,7 @@ class SrmClient:
                 raise
             except SrmError:
                 pass
-        self._login_failure = None
+        self._login_failure = self._session_failure = None
         if otp_code:
             self._otp_code = otp_code
         previous = self._sid
@@ -372,6 +390,12 @@ class SrmClient:
         except (SrmAuthenticationError, SrmBlockedError) as err:
             self._login_failure = (type(err), err.code, err.api)
             raise
+        except SrmApiError as err:  # may pass: pause automatic logins, longer each time
+            self._login_backoff = min(self._login_backoff * 2 or _LOGIN_BACKOFF, _LOGIN_BACKOFF_MAX)
+            self._login_retry_at = time.monotonic() + self._login_backoff
+            self._passing_failure = (type(err), err.code, err.api)
+            raise
+        self._passing_failure, self._login_backoff = None, 0.0
 
     async def _login_version(self) -> int:
         """Pick the highest login version the router offers; fall back to 3 without a catalog.
@@ -404,11 +428,18 @@ class SrmClient:
             "format": "sid",
             "session": self._session_name,
         }
-        # A code is valid once; never repeat it on a later login, right or wrong.
-        otp_code, self._otp_code = self._otp_code, None
-        if otp_code:
-            form["otp_code"] = otp_code
-        envelope = await self._post("auth.cgi", form)
+        if self._otp_code:
+            form["otp_code"] = self._otp_code
+        # A code is valid once: after the router answered, right or wrong, it is never sent
+        # again. Without an answer the router may not have seen it, so it is kept.
+        try:
+            envelope = await self._post("auth.cgi", form)
+        except SrmConnectionError:
+            raise
+        except SrmError:
+            self._otp_code = None
+            raise
+        self._otp_code = None
         if not envelope["success"]:
             code = self._error_code(envelope)
             if code in _TWO_FACTOR_ERRORS:
@@ -451,6 +482,9 @@ class SrmClient:
             kind, code, api = self._login_failure
             raise kind(code, api)
         if self._sid is None or self._sid == stale_sid:
+            if self._passing_failure is not None and time.monotonic() < self._login_retry_at:
+                kind, code, api = self._passing_failure
+                raise kind(code, api)
             await self._shared_login()
         if self._sid is None:  # pragma: no cover - _login either sets it or raises
             raise SrmResponseError("Login answer has no session id")
@@ -530,12 +564,15 @@ class SrmClient:
         version = await self._pick_version(spec)
         if version is None:
             raise SrmUnsupportedError(104, spec.api)
+        if self._session_failure is not None and time.monotonic() < self._session_retry_at:
+            raise SrmSessionError(*self._session_failure)
         sid = await self._ensure_login()
         session_logins = 0
         catalog_reloaded = False
         while True:
             envelope = await self._post("entry.cgi", {**self._form(spec, version), "_sid": sid})
             if envelope["success"]:
+                self._session_failure = None
                 return envelope.get("data")
             code = self._error_code(envelope)
             if code in _SESSION_ERRORS and session_logins < _SESSION_RETRIES:
@@ -560,6 +597,8 @@ class SrmClient:
             if code in _PERMISSION_ERRORS:
                 raise SrmPermissionError(code, spec.api)
             if code in _SESSION_ERRORS:
+                self._session_failure = (code, spec.api)
+                self._session_retry_at = time.monotonic() + _SESSION_COOLDOWN
                 raise SrmSessionError(code, spec.api)
             raise SrmApiError(code, spec.api)
 

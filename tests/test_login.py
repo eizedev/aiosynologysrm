@@ -371,3 +371,77 @@ async def test_login_tries_again_after_a_passing_error(
     assert client.logged_in
     with contextlib.suppress(SrmError):
         await read
+
+
+class Clock:
+    """A monotonic clock the test moves by hand."""
+
+    def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self.now = 1000.0
+        monkeypatch.setattr("aiosynologysrm.client.time.monotonic", lambda: self.now)
+
+
+async def test_passing_login_errors_pause_automatic_logins(
+    fake: FakeSrm, make_client: MakeClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    clock = Clock(monkeypatch)
+    fake.login_error = 117
+    client = make_client()
+    for _ in range(3):  # one login, then the same error without asking the router
+        with pytest.raises(SrmApiError):
+            await client.get_system_info()
+    assert _logins(fake) == 1
+    clock.now += 30
+    with pytest.raises(SrmApiError):
+        await client.get_system_info()
+    assert _logins(fake) == 2
+    clock.now += 30  # the pause doubled to 60 seconds
+    with pytest.raises(SrmApiError):
+        await client.get_system_info()
+    assert _logins(fake) == 2
+    with pytest.raises(SrmApiError):
+        await client.login()  # an explicit login always tries
+    assert _logins(fake) == 3
+    fake.login_error = None
+    clock.now += 900  # the pause stops growing at 15 minutes
+    await client.get_system_info()
+    assert client._login_backoff == 0  # a successful login resets the pause
+
+
+async def test_session_errors_pause_reads(
+    fake: FakeSrm, make_client: MakeClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    clock = Clock(monkeypatch)
+    client = make_client()
+    await client.login()
+    fake.errors[("SYNO.Core.System", "info")] = 119
+    with pytest.raises(SrmSessionError):
+        await client.get_system_info()
+    assert fake.logins == 4  # the first login and three more
+    requests = len(fake.requests)
+    with pytest.raises(SrmSessionError):
+        await client.get_utilization()  # within the pause: no request at all
+    assert len(fake.requests) == requests
+    del fake.errors[("SYNO.Core.System", "info")]
+    clock.now += 60
+    assert (await client.get_system_info()).model == "RT2600ac"  # logs in again after it
+    fake.errors[("SYNO.Core.System", "info")] = 119
+    with pytest.raises(SrmSessionError):
+        await client.get_system_info()
+    await client.login()  # an explicit login ends the pause at once
+    del fake.errors[("SYNO.Core.System", "info")]
+    await client.get_system_info()
+
+
+async def test_a_code_survives_a_login_without_answer(
+    fake: FakeSrm, make_client: MakeClient
+) -> None:
+    fake.require_otp = True
+    client = make_client(otp_code="123456")
+    await client.get_catalog()
+    fake.status = 503  # no Web API answer: the router may not have seen the code
+    with pytest.raises(SrmConnectionError):
+        await client.login()
+    fake.status = 200
+    await client.login()
+    assert client.logged_in

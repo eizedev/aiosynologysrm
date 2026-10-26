@@ -6,6 +6,19 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- After a read gave up on session errors (three fresh logins refused), reads raise
+  `SrmSessionError` for 60 seconds without contacting the router, instead of logging in three
+  times per read. A working read or `login()` ends the pause.
+- Login errors that are not remembered (codes outside the credential, two-factor and block codes)
+  pause automatic logins for 30 seconds, doubling up to 15 minutes; `login()` always tries.
+
+### Fixed
+
+- A two-factor code is kept when its login got no answer (connection error or timeout), instead
+  of being lost before the request was sent.
+
 ## [0.7.2] - 2026-10-25
 
 ### Changed
