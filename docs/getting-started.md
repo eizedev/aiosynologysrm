@@ -62,11 +62,42 @@ client = SrmClient(..., ssl=aiohttp.Fingerprint(bytes.fromhex(fingerprint)))
 A renewed certificate then raises `SrmCertificateError` until the new fingerprint is confirmed.
 `ssl` also takes `False` or an `ssl.SSLContext`. `ssl=True` uses the aiohttp session's own
 setting, so with a session that does not verify certificates nothing is checked; pin a fingerprint
-or pass an `SSLContext` instead. A router with a certificate from a public CA (for example Let's
-Encrypt) renews it every few months; pinning then means confirming each new fingerprint, so pass
-an `SSLContext` that verifies against the system's CAs instead. Confirming a fingerprint over the
-same network the client uses proves little against an attacker already in that network: compare
-it with what a browser shows on a device you trust.
+or pass an `SSLContext` instead. Confirming a fingerprint over the same network the client uses
+proves little against an attacker already in that network: compare it with what a browser shows
+on a device you trust.
+
+A router with a certificate from a public certificate authority (for example Let's Encrypt)
+renews it every few months; pinning would mean confirming each new fingerprint. Verify it against
+the authorities instead, by the name the user reaches the router under (a DDNS name, for
+example). When the client connects to the IP address, `server_hostname` names the host the
+certificate must be valid for:
+
+```python
+import asyncio
+import ssl
+
+# Reads the system's certificate authorities: create it once, outside the event loop.
+context = await asyncio.to_thread(ssl.create_default_context)
+client = SrmClient("192.0.2.1", ..., ssl=context, server_hostname="router.example.net")
+```
+
+Every connection then checks the chain and the name; renewals need nothing. Take the name from
+the user, not from the certificate: anyone can get a certificate from a public authority for a
+name of their own, so a name read from the certificate proves nothing. `get_certificate_names()`
+tells whether an authority vouches for the certificate, and shows its names and issuer, for
+example to offer the check by name only where it applies:
+
+```python
+from aiosynologysrm import get_certificate_names
+
+# Raises SrmCertificateError if no certificate authority vouches for the certificate.
+certificate = await get_certificate_names("192.0.2.1")
+print(certificate.names, certificate.issuer)  # ('router.example.net',) Let's Encrypt (R11)
+```
+
+A check by name trusts every authority the system trusts and does not check revocation. A
+wildcard certificate is valid for every name under its domain, so whoever holds its key passes
+the check as well.
 
 Two-factor authentication works for interactive use only: `otp_code` is sent with the first login
 the router answers, and never again. When the session ends, the next login raises `SrmTwoFactorRequiredError` and

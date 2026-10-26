@@ -102,6 +102,7 @@ class FakeSrm:
     status: int = 200
     delay: float = 0
     chunked: bool = False
+    login_without_sid: bool = False
     logins: int = 0
     logouts: int = 0
     requests: list[dict[str, str]] = field(default_factory=list)
@@ -163,6 +164,8 @@ class FakeSrm:
             return self.ok({})
         if self.login_error is not None:
             return self.fail(self.login_error)
+        if self.login_without_sid:
+            return self.ok({})
         if form.get("account") != USERNAME or form.get("passwd") != PASSWORD:
             return self.fail(400)
         if self.require_otp and form.get("otp_code") != "123456":

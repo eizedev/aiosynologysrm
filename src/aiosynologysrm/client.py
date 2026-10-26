@@ -7,9 +7,10 @@ import ipaddress
 import json
 import logging
 import secrets
-import time
 from collections.abc import Awaitable, Callable, Mapping
+from functools import partial
 from ssl import SSLContext
+from time import monotonic
 from types import TracebackType
 from typing import Any, Final, Self
 
@@ -189,6 +190,13 @@ def _retrieve(attempt: asyncio.Future[Any]) -> None:
         attempt.exception()
 
 
+def _again(err: SrmError) -> Callable[[], SrmError]:
+    """Return a way to raise a fresh copy of a login error while automatic logins pause."""
+    if isinstance(err, SrmApiError):
+        return partial(type(err), err.code, err.api)
+    return partial(type(err), *err.args)
+
+
 class SrmClient:
     """One authenticated session with one SRM device (router or access point).
 
@@ -202,6 +210,10 @@ class SrmClient:
     ``async_get_clientsession(hass, verify_ssl=False)``) nothing is checked. Pass a fingerprint or
     an ``SSLContext`` to be sure. ``otp_code`` is sent with the first login
     only; see :class:`aiosynologysrm.SrmTwoFactorRequiredError`.
+
+    ``server_hostname`` is the name the certificate is checked against, for a router reached by
+    its IP address whose certificate from a public authority names a host (see
+    :func:`aiosynologysrm.get_certificate_names`). It needs a verifying ``SSLContext``.
 
     ``session_name`` names the session in SRM and in the debug log. Without one each client gets
     its own random name; pass a stable one (for example per application instance) to recognise it
@@ -231,6 +243,7 @@ class SrmClient:
         max_concurrency: int = DEFAULT_MAX_CONCURRENCY,
         max_response_bytes: int = MAX_RESPONSE_BYTES,
         session_name: str | None = None,
+        server_hostname: str | None = None,
     ) -> None:
         """Prepare the client; nothing is sent until the first request."""
         if not _valid_host(host):
@@ -240,6 +253,12 @@ class SrmClient:
             # A pin or a context does nothing over HTTP; the password would go out unprotected
             # although the caller asked for a checked connection.
             msg = "ssl (a fingerprint or an SSLContext) needs use_https=True"
+            raise ValueError(msg)
+        if server_hostname is not None and not (
+            use_https and isinstance(ssl, SSLContext) and ssl.check_hostname
+        ):
+            # Without a context that checks names, the name would be sent but never checked.
+            msg = "server_hostname needs use_https=True and an SSLContext that checks host names"
             raise ValueError(msg)
         if port is None:
             port = DEFAULT_HTTPS_PORT if use_https else DEFAULT_HTTP_PORT
@@ -251,6 +270,7 @@ class SrmClient:
         self._otp_code: str | None = otp_code
         self._session = session
         self._ssl = ssl
+        self._server_hostname = server_hostname
         self._timeout = aiohttp.ClientTimeout(total=timeout)
         self._max_response_bytes = max_response_bytes
         self._session_name = session_name or f"aiosynologysrm-{secrets.token_hex(4)}"
@@ -267,7 +287,7 @@ class SrmClient:
         # so no traceback (with the password in a frame) is kept or grows.
         self._login_failure: tuple[type[SrmApiError], int, str | None] | None = None
         # The last login error that may pass, and when automatic logins may try again.
-        self._passing_failure: tuple[type[SrmApiError], int, str | None] | None = None
+        self._passing_failure: Callable[[], SrmError] | None = None
         self._login_backoff = 0.0
         self._login_retry_at = 0.0
         # The session error a read gave up on, and until when reads fail without logging in.
@@ -306,6 +326,7 @@ class SrmClient:
                     url,
                     data=dict(data),
                     ssl=self._ssl,
+                    server_hostname=self._server_hostname,
                     timeout=self._timeout,
                     allow_redirects=False,
                 ) as response,
@@ -390,10 +411,18 @@ class SrmClient:
         except (SrmAuthenticationError, SrmBlockedError) as err:
             self._login_failure = (type(err), err.code, err.api)
             raise
-        except SrmApiError as err:  # may pass: pause automatic logins, longer each time
+        except (SrmApiError, SrmResponseError) as err:
+            # The router answered, but not with a session: this may pass. Pause automatic logins,
+            # longer each time.
             self._login_backoff = min(self._login_backoff * 2 or _LOGIN_BACKOFF, _LOGIN_BACKOFF_MAX)
-            self._login_retry_at = time.monotonic() + self._login_backoff
-            self._passing_failure = (type(err), err.code, err.api)
+            self._login_retry_at = monotonic() + self._login_backoff
+            self._passing_failure = _again(err)
+            _LOGGER.debug(
+                "Login to %s failed (%s), automatic logins pause for %.0f s",
+                self._base_url,
+                err,
+                self._login_backoff,
+            )
             raise
         self._passing_failure, self._login_backoff = None, 0.0
 
@@ -431,9 +460,13 @@ class SrmClient:
         if self._otp_code:
             form["otp_code"] = self._otp_code
         # A code is valid once: after the router answered, right or wrong, it is never sent
-        # again. Without an answer the router may not have seen it, so it is kept.
+        # again. When the request did not reach the router it is kept; after a timeout the router
+        # may have used it, so it is dropped as well.
         try:
             envelope = await self._post("auth.cgi", form)
+        except SrmTimeoutError:
+            self._otp_code = None
+            raise
         except SrmConnectionError:
             raise
         except SrmError:
@@ -482,9 +515,8 @@ class SrmClient:
             kind, code, api = self._login_failure
             raise kind(code, api)
         if self._sid is None or self._sid == stale_sid:
-            if self._passing_failure is not None and time.monotonic() < self._login_retry_at:
-                kind, code, api = self._passing_failure
-                raise kind(code, api)
+            if self._passing_failure is not None and monotonic() < self._login_retry_at:
+                raise self._passing_failure()
             await self._shared_login()
         if self._sid is None:  # pragma: no cover - _login either sets it or raises
             raise SrmResponseError("Login answer has no session id")
@@ -564,7 +596,7 @@ class SrmClient:
         version = await self._pick_version(spec)
         if version is None:
             raise SrmUnsupportedError(104, spec.api)
-        if self._session_failure is not None and time.monotonic() < self._session_retry_at:
+        if self._session_failure is not None and monotonic() < self._session_retry_at:
             raise SrmSessionError(*self._session_failure)
         sid = await self._ensure_login()
         session_logins = 0
@@ -598,7 +630,14 @@ class SrmClient:
                 raise SrmPermissionError(code, spec.api)
             if code in _SESSION_ERRORS:
                 self._session_failure = (code, spec.api)
-                self._session_retry_at = time.monotonic() + _SESSION_COOLDOWN
+                self._session_retry_at = monotonic() + _SESSION_COOLDOWN
+                _LOGGER.debug(
+                    "%s refused %d fresh sessions (%s), reads pause for %.0f s",
+                    self._base_url,
+                    session_logins,
+                    code,
+                    _SESSION_COOLDOWN,
+                )
                 raise SrmSessionError(code, spec.api)
             raise SrmApiError(code, spec.api)
 

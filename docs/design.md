@@ -50,7 +50,8 @@ looks like "safe to call". On an RT2600ac with SRM 1.3.2 that flag also sits on 
 - `async with SrmClient(...)` logs out at the end; otherwise call `logout()`.
 - The aiohttp session is passed in and never closed by the client.
 - A two-factor code is sent with one login only, whether it was accepted or not. Only when that
-  login got no answer at all (a connection error or timeout) is it kept for the next one. Codes are valid
+  login failed with a connection error is it kept for the next one; after a timeout the router
+  may have used it, so it is dropped and the next login needs a fresh code. Codes are valid
   once, and repeating a rejected one counts towards SRM's auto block. A later login without a code
   raises `SrmTwoFactorRequiredError`, so unattended use needs an account without two-factor
   authentication. Trusted-device tokens, which would avoid this on DSM, are not implemented:
@@ -94,6 +95,15 @@ TLS failures (untrusted certificate, fingerprint mismatch) raise `SrmCertificate
 deliberately not a `SrmConnectionError`: retrying does not help, and code that retries connection
 errors must not retry a changed certificate. An application asks the user to confirm the new
 fingerprint instead.
+
+A certificate from a public authority is verified like any other, with an `SSLContext`, and
+`server_hostname` names the host it must be valid for when the router is reached by its IP
+address (aiohttp's `server_hostname`; it also sets SNI). `get_certificate_names()` verifies the
+chain without the name and returns the certificate's DNS names and issuer, so an application can
+tell whether a check by name applies. The name to check comes from the user, not from these
+names: a certificate from a public authority for someone else's name is just as valid. A
+`server_hostname` without a context that checks names is refused with `ValueError`, since it
+would be sent but never checked.
 
 ## Versions
 

@@ -20,6 +20,7 @@ from aiosynologysrm import (
     SrmConnectionError,
     SrmTimeoutError,
     get_certificate_fingerprint,
+    get_certificate_names,
 )
 
 from .conftest import PASSWORD, USERNAME, FakeSrm
@@ -187,3 +188,95 @@ async def test_fingerprint_with_a_verifying_context_reports_an_untrusted_certifi
         await get_certificate_fingerprint(
             HOST, https_server.port, ssl_context=ssl.create_default_context()
         )
+
+
+NAME = "router.example.net"
+
+
+@pytest.fixture
+async def named_server(fake: FakeSrm, ca: trustme.CA) -> AsyncIterator[TestServer]:
+    """A router reached by IP address whose certificate from a CA names a host."""
+    context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+    ca.issue_cert(NAME).configure_cert(context)
+    app = web.Application()
+    app.router.add_post("/webapi/{cgi}", fake.handle)
+    server = TestServer(app, host=HOST)
+    await server.start_server(ssl=context)
+    yield server
+    await server.close()
+
+
+def _trusting(ca: trustme.CA, *, check_hostname: bool) -> ssl.SSLContext:
+    context = ssl.create_default_context()
+    ca.configure_trust(context)
+    context.check_hostname = check_hostname
+    return context
+
+
+async def test_names_of_a_certificate_a_ca_vouches_for(
+    named_server: TestServer, ca: trustme.CA
+) -> None:
+    assert named_server.port is not None
+    certificate = await get_certificate_names(
+        HOST, named_server.port, ssl_context=_trusting(ca, check_hostname=False)
+    )
+    assert certificate.names == (NAME,)
+    assert certificate.issuer is not None
+    assert certificate.issuer.startswith("trustme")
+
+
+async def test_names_need_a_ca_that_vouches(named_server: TestServer) -> None:
+    assert named_server.port is not None
+    with pytest.raises(SrmCertificateError):  # the system's CAs do not know the test CA
+        await get_certificate_names(HOST, named_server.port)
+
+
+async def test_names_need_a_context_that_verifies_without_checking_names(ca: trustme.CA) -> None:
+    unverified = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    unverified.check_hostname = False
+    unverified.verify_mode = ssl.CERT_NONE
+    for context in (_trusting(ca, check_hostname=True), unverified):
+        with pytest.raises(ValueError, match="CERT_REQUIRED"):
+            await get_certificate_names(HOST, ssl_context=context)
+
+
+async def test_a_router_reached_by_address_is_checked_against_its_name(
+    fake: FakeSrm, named_server: TestServer, ca: trustme.CA, http: aiohttp.ClientSession
+) -> None:
+    def client(name: str) -> SrmClient:
+        return SrmClient(
+            HOST,
+            USERNAME,
+            PASSWORD,
+            session=http,
+            port=named_server.port,
+            ssl=_trusting(ca, check_hostname=True),
+            server_hostname=name,
+        )
+
+    with pytest.raises(SrmCertificateError):
+        await client("other.example.net").login()
+    assert fake.requests == []  # the password never left the client
+    await client(NAME).login()
+    assert named_server.port is not None
+    fingerprint = await get_certificate_fingerprint(
+        HOST,
+        named_server.port,
+        ssl_context=_trusting(ca, check_hostname=True),
+        server_hostname=NAME,
+    )
+    assert len(fingerprint) == 64
+
+
+def test_a_name_needs_a_context_that_checks_it(http: aiohttp.ClientSession) -> None:
+    no_names = ssl.create_default_context()
+    no_names.check_hostname = False
+    for kwargs in (
+        {"ssl": True},
+        {"ssl": False},
+        {"ssl": aiohttp.Fingerprint(b"a" * 32)},
+        {"ssl": no_names},
+        {"ssl": ssl.create_default_context(), "use_https": False},
+    ):
+        with pytest.raises(ValueError, match="needs use_https"):
+            SrmClient(HOST, "u", "p", session=http, server_hostname=NAME, **kwargs)
