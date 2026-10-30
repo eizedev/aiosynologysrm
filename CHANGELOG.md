@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-30
+
 ### Added
 
 - `get_wifi_networks()` (`SYNO.Wifi.Network.Setting`): every Wi-Fi network (primary, guest) with
@@ -378,7 +380,8 @@ These names are gone; use the replacement on the right.
 - `scripts/anonymize.py` to turn real router answers into publishable test fixtures.
 - Fixtures from an RT2600ac with SRM 1.3.2.
 
-[Unreleased]: https://github.com/eizedev/aiosynologysrm/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/eizedev/aiosynologysrm/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/eizedev/aiosynologysrm/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/eizedev/aiosynologysrm/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/eizedev/aiosynologysrm/compare/v0.7.3...v0.8.0
 [0.7.3]: https://github.com/eizedev/aiosynologysrm/compare/v0.7.2...v0.7.3
