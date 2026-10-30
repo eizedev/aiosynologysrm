@@ -46,6 +46,10 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
+The host is a name or an IP address, without port or path; `port` and `use_https` are separate
+arguments. An IPv6 address works with or without brackets, a link-local one also with its zone
+id (`fe80::1%eth0`).
+
 ## Certificate and two-factor authentication
 
 SRM ships a self-signed certificate, so the default `ssl=True` rejects it. Instead of switching
@@ -60,7 +64,8 @@ client = SrmClient(..., ssl=aiohttp.Fingerprint(bytes.fromhex(fingerprint)))
 ```
 
 A renewed certificate then raises `SrmCertificateError` until the new fingerprint is confirmed.
-`ssl` also takes `False` or an `ssl.SSLContext`. `ssl=True` uses the aiohttp session's own
+`ssl` also takes `False` or an `ssl.SSLContext`. `ssl=False` checks nothing and logs a warning
+once per host, as plain HTTP does. `ssl=True` uses the aiohttp session's own
 setting, so with a session that does not verify certificates nothing is checked; pin a fingerprint
 or pass an `SSLContext` instead. Confirming a fingerprint over the same network the client uses
 proves little against an attacker already in that network: compare it with what a browser shows
@@ -76,7 +81,8 @@ certificate must be valid for:
 import asyncio
 import ssl
 
-# Reads the system's certificate authorities: create it once, outside the event loop.
+# create_default_context() reads the system's certificate authorities from disk, which blocks.
+# Create the context once, in a thread (asyncio.to_thread), and reuse it.
 context = await asyncio.to_thread(ssl.create_default_context)
 client = SrmClient("192.0.2.1", ..., ssl=context, server_hostname="router.example.net")
 ```

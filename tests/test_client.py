@@ -339,6 +339,8 @@ def test_only_ipv6_addresses_get_brackets(http: aiohttp.ClientSession) -> None:
     assert url("[fe80::1]") == "https://[fe80::1]:8001/webapi"
     assert url("192.0.2.1") == "https://192.0.2.1:8001/webapi"
     assert url("router.example") == "https://router.example:8001/webapi"
+    # A link-local address with its zone id; aiohttp connects to it as it is (checked on macOS).
+    assert url("fe80::1%eth0") == "https://[fe80::1%eth0]:8001/webapi"
 
 
 def test_default_ports(http: aiohttp.ClientSession) -> None:
@@ -382,12 +384,12 @@ async def test_supports_a_getter(fake: FakeSrm, make_client: MakeClient) -> None
 async def test_every_getter_sends_exactly_its_listed_reads(
     fake: FakeSrm, make_client: MakeClient
 ) -> None:
-    from aiosynologysrm.client import _GETTER_READS  # noqa: PLC0415 - private on purpose
+    from aiosynologysrm import GETTER_READS  # noqa: PLC0415
 
     client = make_client()
     getters = {n for n in dir(client) if n.startswith("get_") and n != "get_catalog"}
-    assert getters == set(_GETTER_READS)
-    for name, specs in _GETTER_READS.items():
+    assert getters == set(GETTER_READS)
+    for name, specs in GETTER_READS.items():
         fake.requests.clear()
         await getattr(client, name)()
         sent = {(r["api"], r["method"]) for r in fake.requests if r.get("_sid")}

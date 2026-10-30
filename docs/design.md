@@ -115,7 +115,10 @@ client uses the highest one the router offers. If there is none, the call is not
 ## Concurrency
 
 SRM routers are slow, around half a second per call on an RT2600ac. The client limits parallel
-requests (`max_concurrency`, default 2) so it does not swamp the router. An answer larger than
+requests (`max_concurrency`, default 2) so it does not swamp the router. A request's `timeout`
+starts once it has a slot: the wait for a free slot is not part of it, so many concurrent reads
+can take longer than `timeout` each. Wrap a whole update in `asyncio.timeout()` for a hard limit.
+An answer larger than
 `max_response_bytes` (default 4 MiB; the largest real answers are a few hundred KB) is refused
 before it is parsed, which bounds the memory a broken or hostile router can make the client use.
 
@@ -166,7 +169,10 @@ represents data, it does not interpret it". In practice:
   whole answer, so its list sits under SRM's key (`Ipv6Prefixes.prefix`, `DhcpServers.data`,
   `WifiRadioStatus.status_list`). A nested object SRM did not send is `None`; a missing list is
   `()`. Check for `None` at each level (`clients.client_list.ipv4`).
-- **Keys the library does not map yet** are in each model's read-only `raw`.
+- **Keys the library does not map yet** are in each model's read-only `raw`, a dict that refuses
+  changes. Models can be copied, pickled and turned into a dict with `dataclasses.asdict()`; that
+  dict includes `raw`, which is the router's own data (names, addresses): redact it before you
+  share it.
 - **Everything derived lives in `aiosynologysrm.helpers`**: joins (`pair_radios`, `hits_by_rule`),
   classifications (`address_scope`, `is_root`), parsed durations and dates, sums and percentages,
   and `config_hash`. Each helper documents its rule, so a caller can decide whether it fits.

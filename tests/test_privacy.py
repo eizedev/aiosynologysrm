@@ -155,6 +155,7 @@ def test_unpublished_commits_are_read(tmp_path: Path, monkeypatch: pytest.Monkey
         "commit.gpgsign=false",
     ]
     _git("init", "-q")
+    # Synology's real vendor prefix on purpose: the check must catch addresses that look real.
     (tmp_path / "notes.txt").write_text("router 00:11:32:00:00:01\n", encoding="utf-8")
     _git("add", "notes.txt")
     _git(*commit, "commit", "-q", "-m", "add")

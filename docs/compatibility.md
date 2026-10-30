@@ -7,7 +7,8 @@ This page is the single place that says what this library supports and how sure 
 1. **At runtime**, the client reads the router's API catalog (`SYNO.API.Info`). A call is only
    sent if the router offers the API in a version the parser understands
    (`await client.supports(client.get_wifi_radio_status)` answers that for a getter, or `supports(spec)`
-   for a single read, without sending anything). Everything else raises
+   for a single read, without sending anything; `GETTER_READS` lists the reads behind each
+   getter). Everything else raises
    `SrmUnsupportedError`. A newer firmware that keeps an API version keeps working; one that
    drops it fails clearly instead of returning wrong data.
 2. **In the tests**, each supported API has fixtures recorded on a real device, anonymized with

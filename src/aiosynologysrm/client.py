@@ -133,9 +133,10 @@ _BLOCKED_ERROR: Final = 407  # IP address blocked by auto block
 
 _ALLOWED: Final = frozenset((spec.api, spec.method) for spec in ALL_READS)
 _WARNED_HTTP: set[str] = set()  # hosts warned about plain HTTP, once per process
+_WARNED_UNVERIFIED: set[str] = set()  # hosts warned about ssl=False, once per process
 
-# The read each getter sends; supports() and the diagnostics use it.
-_GETTER_READS: Final[Mapping[str, tuple[ReadSpec, ...]]] = {
+# The reads each getter sends, by the getter's name; supports() and the diagnostics use it.
+GETTER_READS: Final[Mapping[str, tuple[ReadSpec, ...]]] = {
     "get_system_info": (SYSTEM_INFO,),
     "get_utilization": (UTILIZATION,),
     "get_network_devices": (NETWORK_DEVICES,),
@@ -296,6 +297,11 @@ class SrmClient:
         if not use_https and host not in _WARNED_HTTP:
             _WARNED_HTTP.add(host)
             _LOGGER.warning("Connecting to %s over plain HTTP: the password is not encrypted", host)
+        if use_https and ssl is False and host not in _WARNED_UNVERIFIED:
+            _WARNED_UNVERIFIED.add(host)
+            _LOGGER.warning(
+                "Not verifying the certificate of %s: anyone in between can read the password", host
+            )
 
     async def __aenter__(self) -> Self:
         """Log in when used as an async context manager."""
@@ -510,6 +516,14 @@ class SrmClient:
         except SrmError:
             _LOGGER.debug("Logout from %s failed, ignored", self._base_url)
 
+    async def ensure_login(self) -> None:
+        """Log in if there is no session yet, as every request does on its own.
+
+        Unlike :meth:`login` it keeps a session that exists, and it respects a remembered failed
+        login: after wrong credentials it raises that error again without sending them.
+        """
+        await self._ensure_login()
+
     async def _ensure_login(self, stale_sid: str | None = None) -> str:
         if self._login_failure is not None:
             kind, code, api = self._login_failure
@@ -564,10 +578,10 @@ class SrmClient:
             specs: tuple[ReadSpec, ...] = (target,)
         else:
             name = getattr(target, "__name__", "")
-            if getattr(target, "__self__", None) is not self or name not in _GETTER_READS:
+            if getattr(target, "__self__", None) is not self or name not in GETTER_READS:
                 msg = "supports() takes a ReadSpec or a getter of this client"
                 raise TypeError(msg)
-            specs = _GETTER_READS[name]
+            specs = GETTER_READS[name]
         for spec in specs:
             if await self._pick_version(spec) is None:
                 return False

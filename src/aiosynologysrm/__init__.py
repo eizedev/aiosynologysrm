@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from . import helpers
-from .client import SrmClient
+from .client import GETTER_READS, SrmClient
 from .errors import (
     SrmApiError,
     SrmAuthenticationError,
@@ -88,6 +88,7 @@ except ImportError:  # pragma: no cover - only in a source tree without a build
     __version__ = "0.0.0"
 
 __all__ = [
+    "GETTER_READS",
     "AllowSrmFromWan",
     "AutoBlock",
     "CertificateNames",
