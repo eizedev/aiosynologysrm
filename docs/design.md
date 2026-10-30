@@ -124,6 +124,11 @@ before it is parsed, which bounds the memory a broken or hostile router can make
 
 ## Privacy
 
+- **Secrets SRM sends along are dropped on arrival.** `SYNO.Wifi.Network.Setting` answers with
+  each network's Wi-Fi key (`security`) and the mail addresses of the guest key rotation
+  (`password_rotate`). The read lists these keys (`ReadSpec.drop`), and the client removes them at
+  any depth before `read()` returns, so they are in no model, no `raw`, no diagnostics and no
+  fixture. This is the one place where `raw` does not mirror SRM.
 - Credentials travel in the POST body, never in a URL, so they do not end up in proxy or
   web server logs.
 - Exception messages carry the error code and API name, never the password, the session id or

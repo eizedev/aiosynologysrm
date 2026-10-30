@@ -216,6 +216,7 @@ def test_allowlist_is_pinned() -> None:
             ("SYNO.Wifi.Radio.Setting", "get", (1,), ()),
             ("SYNO.Wifi.Radio.Status", "get", (1,), ()),
             ("SYNO.Wifi.Device", "get", (1,), ()),
+            ("SYNO.Wifi.Network.Setting", "get", (1,), ()),
             ("SYNO.Mesh.Network.EthPortInfo", "get", (1,), ()),
             ("SYNO.Mesh.Node.List", "get", (4,), ()),
             (

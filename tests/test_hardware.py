@@ -2,9 +2,18 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 
-from aiosynologysrm import EthPortInfo, MeshNodes, SrmClient, StorageVolume, helpers
+from aiosynologysrm import (
+    EthPortInfo,
+    MeshNodes,
+    SrmClient,
+    StorageVolume,
+    WifiNetworkProfile,
+    helpers,
+)
+from aiosynologysrm.reads import WIFI_NETWORKS
 
 from .conftest import MR2200AC, FakeSrm, responses
 
@@ -92,3 +101,54 @@ def test_odd_input() -> None:
     assert not helpers.is_root(node)
     assert helpers.used_percent(StorageVolume(size_total_byte=0, size_free_byte=0)) is None
     assert helpers.used_percent(StorageVolume(size_total_byte=200, size_free_byte=50)) == 75.0
+
+
+async def test_wifi_networks_per_band(fake: FakeSrm, make_client: MakeClient) -> None:
+    # The router: Smart Connect on for both networks; the guest network is on through it, while
+    # its band entries say off.
+    router = (await make_client().get_wifi_networks()).profiles
+    assert [(p.id, p.network_type, p.enable_smart_connect) for p in router] == [
+        (0, "primary", True),
+        (1, "guest", True),
+    ]
+    assert helpers.network_bands(router[0]) == (("2.4G", True), ("5G", True))
+    assert helpers.network_bands(router[1]) == (("2.4G", True), ("5G", True))
+    assert router[1].radio_list[1].enable is False
+    # The access point: Smart Connect off, so each band decides; 5G-1 is off, the guest network too.
+    fake.responses = responses(MR2200AC)
+    ap = (await make_client().get_wifi_networks()).profiles
+    assert helpers.network_bands(ap[0]) == (("2.4G", True), ("5G-1", False), ("5G-2", True))
+    assert helpers.network_bands(ap[1]) == (("2.4G", False), ("5G-1", False), ("5G-2", False))
+    band = ap[0].radio_list[1]
+    assert band.ssid
+    assert band.schedule is not None
+    assert band.schedule.enable is False
+
+
+def test_network_bands_without_a_smart_connect_entry() -> None:
+    profile = WifiNetworkProfile.from_api(
+        {"enable_smart_connect": True, "radio_list": [{"radio_type": "2.4G", "enable": True}, {}]}
+    )
+    assert helpers.network_bands(profile) == (("2.4G", True),)
+
+
+async def test_wifi_keys_never_reach_the_caller(fake: FakeSrm, make_client: MakeClient) -> None:
+    key = ("SYNO.Wifi.Network.Setting", "get")
+    answer = fake.responses[key]
+    for profile in answer["profiles"]:
+        profile["password_rotate"] = {"mail_list": ["someone@example.invalid"]}
+        for band in profile["radio_list"]:
+            band["security"] = {"password": "wifi-key-1234", "security_level": "wpa2"}
+    client = make_client()
+    for result in (await client.read(WIFI_NETWORKS), (await client.get_wifi_networks()).raw):
+        text = json.dumps(result, default=str)
+        assert "wifi-key-1234" not in text
+        assert "someone@example.invalid" not in text
+        assert '"security"' not in text
+    networks = await client.get_wifi_networks()
+    for profile in networks.profiles:
+        assert "password_rotate" not in profile.raw
+        assert all("security" not in band.raw for band in profile.radio_list)
+    # Other reads are passed on as they are.
+    fake.responses[("SYNO.Core.System", "info")]["security"] = "kept"
+    assert (await client.get_system_info()).raw["security"] == "kept"

@@ -28,6 +28,7 @@ interface's requests map 1:1. Values keep SRM's units and formats; `raw` holds t
 | `get_wifi_radio_settings()` | `SYNO.Wifi.Radio.Setting` | channel (0 = automatic), width, power per radio |
 | `get_wifi_radio_status()` | `SYNO.Wifi.Radio.Status` | channel in use and BSSID per radio |
 | `get_wifi_devices()` | `SYNO.Wifi.Device` | signal, link rate, connection time, traffic of each Wi-Fi client |
+| `get_wifi_networks()` | `SYNO.Wifi.Network.Setting` | every Wi-Fi network (primary, guest) with its bands, SSID, on or off; the Wi-Fi keys are dropped |
 | `get_eth_port_info()` | `SYNO.Mesh.Network.EthPortInfo` | link state and speed of every Ethernet port |
 | `get_mesh_nodes()` | `SYNO.Mesh.Node.List` | the router and its mesh points |
 | `get_usb_volumes()` | `SYNO.Core.Storage.Volume` | USB storage: file system, size, free space |
@@ -36,6 +37,7 @@ Anything derived is in `aiosynologysrm.helpers`, kept apart from the models on p
 `locate_clients()` tells for each client which router or access point it is attached to, by Wi-Fi
 (which radio) or cable, from the lists of several devices; the classification of an address (`address_scope`: public, private, carrier-grade NAT), summed hit
 counters per rule (`hits_by_rule`), radio settings paired with their live state (`pair_radios`),
+whether a Wi-Fi network is on per band, with or without Smart Connect (`network_bands`),
 durations and dates from SRM's text (`up_time`, `lease_remaining`, `firmware_date`), used space,
 and `config_hash()` to detect configuration changes from the models' `raw`.
 

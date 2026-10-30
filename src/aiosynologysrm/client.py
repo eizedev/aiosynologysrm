@@ -47,6 +47,7 @@ from .hardware import (
     MeshNodes,
     StorageVolumes,
     WifiDevices,
+    WifiNetworks,
     WifiRadioSettings,
     WifiRadioStatus,
 )
@@ -89,6 +90,7 @@ from .reads import (
     USB_VOLUMES,
     UTILIZATION,
     WIFI_DEVICES,
+    WIFI_NETWORKS,
     WIFI_RADIO_SETTINGS,
     WIFI_RADIO_STATUS,
     ReadSpec,
@@ -158,6 +160,7 @@ GETTER_READS: Final[Mapping[str, tuple[ReadSpec, ...]]] = {
     "get_auto_block": (AUTO_BLOCK,),
     "get_wifi_radio_settings": (WIFI_RADIO_SETTINGS,),
     "get_wifi_radio_status": (WIFI_RADIO_STATUS,),
+    "get_wifi_networks": (WIFI_NETWORKS,),
     "get_wifi_devices": (WIFI_DEVICES,),
     "get_eth_port_info": (ETH_PORT_INFO,),
     "get_mesh_nodes": (MESH_NODES,),
@@ -178,6 +181,17 @@ def _is_ipv6(host: str) -> bool:
         return ipaddress.ip_address(host).version == 6  # noqa: PLR2004 - IP version
     except ValueError:
         return False
+
+
+def _without(value: Any, keys: frozenset[str]) -> Any:
+    """Return an answer without the given keys, at any depth (a read's ``drop``)."""
+    if not keys:
+        return value
+    if isinstance(value, Mapping):
+        return {k: _without(v, keys) for k, v in value.items() if k not in keys}
+    if isinstance(value, list):
+        return [_without(v, keys) for v in value]
+    return value
 
 
 def _retrieve(attempt: asyncio.Future[Any]) -> None:
@@ -619,7 +633,7 @@ class SrmClient:
             envelope = await self._post("entry.cgi", {**self._form(spec, version), "_sid": sid})
             if envelope["success"]:
                 self._session_failure = None
-                return envelope.get("data")
+                return _without(envelope.get("data"), spec.drop)
             code = self._error_code(envelope)
             if code in _SESSION_ERRORS and session_logins < _SESSION_RETRIES:
                 _LOGGER.debug("Session ended (%s), logging in again", code)
@@ -752,6 +766,13 @@ class SrmClient:
     async def get_wifi_radio_status(self) -> WifiRadioStatus:
         """Channel in use and BSSID of each Wi-Fi radio (``SYNO.Wifi.Radio.Status``)."""
         return WifiRadioStatus.from_api(await self._read_object(WIFI_RADIO_STATUS))
+
+    async def get_wifi_networks(self) -> WifiNetworks:
+        """Every Wi-Fi network with its bands, on or off (``SYNO.Wifi.Network.Setting``).
+
+        SRM sends the Wi-Fi keys with it; they are dropped before this method sees the answer.
+        """
+        return WifiNetworks.from_api(await self._read_object(WIFI_NETWORKS))
 
     async def get_wifi_devices(self) -> WifiDevices:
         """Clients on this device's own Wi-Fi with signal and traffic (``SYNO.Wifi.Device``)."""

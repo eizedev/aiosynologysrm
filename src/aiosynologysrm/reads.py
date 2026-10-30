@@ -27,6 +27,8 @@ class ReadSpec:
     method: str
     versions: tuple[int, ...]
     params: tuple[tuple[str, str], ...] = field(default=())
+    drop: frozenset[str] = field(default=frozenset())
+    """Keys removed from the answer at any depth before anyone sees it (secrets SRM sends along)."""
 
     def __post_init__(self) -> None:
         """Refuse to define anything that is not a read."""
@@ -71,6 +73,11 @@ AUTO_BLOCK: Final = ReadSpec("SYNO.Core.Security.AutoBlock", "get", (1,))
 WIFI_RADIO_SETTINGS: Final = ReadSpec("SYNO.Wifi.Radio.Setting", "get", (1,))
 WIFI_RADIO_STATUS: Final = ReadSpec("SYNO.Wifi.Radio.Status", "get", (1,))
 WIFI_DEVICES: Final = ReadSpec("SYNO.Wifi.Device", "get", (1,))
+# Version 2 refuses get (103). The answer carries each network's Wi-Fi key (``security``) and the
+# mail addresses of the guest key rotation (``password_rotate``): dropped on arrival.
+WIFI_NETWORKS: Final = ReadSpec(
+    "SYNO.Wifi.Network.Setting", "get", (1,), drop=frozenset({"security", "password_rotate"})
+)
 ETH_PORT_INFO: Final = ReadSpec("SYNO.Mesh.Network.EthPortInfo", "get", (1,))
 MESH_NODES: Final = ReadSpec("SYNO.Mesh.Node.List", "get", (4,))
 USB_VOLUMES: Final = ReadSpec(
@@ -103,6 +110,7 @@ ALL_READS: Final = (
     WIFI_RADIO_SETTINGS,
     WIFI_RADIO_STATUS,
     WIFI_DEVICES,
+    WIFI_NETWORKS,
     ETH_PORT_INFO,
     MESH_NODES,
     USB_VOLUMES,
