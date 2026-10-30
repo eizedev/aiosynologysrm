@@ -12,13 +12,9 @@ permissions:
   contents: read
 
 jobs:
-  ci:
-    name: CI
-    uses: ./.github/workflows/ci.yml
-
-  build:
-    name: Build
-    needs: ci
+  # First, so a tag on another commit stops before the full CI runs.
+  on-main:
+    name: Tag is on main
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -31,6 +27,24 @@ jobs:
         run: |
           git fetch --no-tags origin main
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main || { echo "$TAG is not on main"; exit 1; }
+
+  ci:
+    name: CI
+    needs: on-main
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    name: Build
+    needs: ci
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # The commit checked on main above; a tag moved in between would build something else.
+      - name: Build the commit the tag pointed to
+        run: test "$(git rev-parse HEAD)" = "$GITHUB_SHA" || { echo "HEAD is not $GITHUB_SHA"; exit 1; }
       # setup-uv's default cache setting ("auto") leaves the cache off for tag pushes, so a
       # release never builds from a cache another workflow wrote.
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2

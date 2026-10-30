@@ -81,6 +81,9 @@ jobs:
           uv venv /tmp/check
           uv pip install --python /tmp/check/bin/python dist/*.whl
           /tmp/check/bin/python -c "import aiosynologysrm; print(aiosynologysrm.__version__)"
+      # The release workflow checks these files against the tag; run that check on a real build
+      # here, so a change in what uv writes into dist/ shows up before a release.
+      - run: python3 scripts/release_notes.py --check dist
 
   # One stable name for branch protection, independent of the matrix.
   ci-ok:

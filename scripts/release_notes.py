@@ -1,6 +1,7 @@
 """Check a release tag against the built package and print its notes from CHANGELOG.md.
 
     python3 scripts/release_notes.py v0.9.0 dist > notes.md
+    python3 scripts/release_notes.py --check dist     # CI: only the built files, any version
 
 Fails when the tag is not of the form vX.Y.Z, when a file in the dist directory was built with
 another version (hatch-vcs takes it from git, so a tag on the wrong commit shows up here), or when
@@ -40,9 +41,15 @@ def section(changelog: str, version: str) -> str:
 
 
 def built_versions(names: list[str]) -> set[str]:
-    """Return the versions in the names of built files; other files are not expected."""
+    """Return the versions in the names of built files; other files are not expected.
+
+    Hidden files are left out: uv writes a ``.gitignore`` into the dist directory, and
+    upload-artifact skips hidden files, so they never reach PyPI.
+    """
     versions = set()
     for name in names:
+        if name.startswith("."):
+            continue
         match = _DIST.match(name)
         if match is None:
             raise ReleaseError(f"Unexpected file in the dist directory: {name}")
@@ -65,12 +72,27 @@ def notes(tag: str, dist_files: list[str], changelog: str) -> str:
 
 def main(argv: list[str]) -> int:
     """Print the notes for the tag and dist directory in argv, or the reason there are none."""
-    if len(argv) != 3:  # noqa: PLR2004 - the script, the tag and the dist directory
+    if len(argv) != 3:  # noqa: PLR2004 - the script, the tag or --check, the dist directory
         print(__doc__, file=sys.stderr)
         return 2
-    files = sorted(p.name for p in Path(argv[2]).iterdir() if p.is_file())
+    entries = sorted(Path(argv[2]).iterdir())
     try:
-        print(notes(argv[1], files, CHANGELOG.read_text(encoding="utf-8")), end="")
+        # upload-artifact also takes visible subdirectories and the targets of links: refuse them.
+        odd = [
+            p.name
+            for p in entries
+            if not p.name.startswith(".") and (p.is_symlink() or not p.is_file())
+        ]
+        if odd:
+            raise ReleaseError(f"Only built files belong in the dist directory: {', '.join(odd)}")
+        files = [p.name for p in entries]
+        if argv[1] == "--check":
+            versions = built_versions(files)
+            if len(versions) != 1:
+                raise ReleaseError(f"The built files disagree: {', '.join(sorted(versions))}")
+            print(f"Built version {versions.pop()}: the release check accepts these files")
+        else:
+            print(notes(argv[1], files, CHANGELOG.read_text(encoding="utf-8")), end="")
     except ReleaseError as err:
         print(err, file=sys.stderr)
         return 1
