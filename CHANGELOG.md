@@ -6,6 +6,30 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- A model's `raw` is a read-only dict instead of a `MappingProxyType`, so models can be copied,
+  pickled and turned into a dict with `dataclasses.asdict()`. That dict includes `raw`, the
+  router's own data: redact it before sharing.
+- `ssl=False` over HTTPS logs a warning once per host, as plain HTTP does: the certificate is not
+  checked, and anyone in between can read the password.
+- Releases take their notes from this changelog and stop when the built version is not the tag's.
+
+### Added
+
+- `GETTER_READS`: the reads behind each getter, by its name, as `supports()` and the diagnostics
+  use them.
+- `SrmClient.ensure_login()`: logs in only when there is no session, and raises a remembered
+  failed login again without sending the credentials.
+
+### Documentation
+
+- A request's `timeout` starts once it has a request slot (`max_concurrency`); the wait for one is
+  not part of it.
+- Hosts: IPv6 addresses with or without brackets, link-local ones with their zone id
+  (`fe80::1%eth0`).
+- How to create an `SSLContext` outside the event loop, and why contributors need uv 0.13.
+
 ## [0.8.0] - 2026-10-26
 
 ### Added

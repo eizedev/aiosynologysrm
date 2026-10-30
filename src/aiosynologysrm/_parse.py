@@ -10,8 +10,7 @@ import re
 from collections.abc import Callable, Mapping
 from dataclasses import field, fields
 from datetime import timedelta
-from types import MappingProxyType
-from typing import Any, Self
+from typing import Any, NoReturn, Self
 
 _INT = re.compile(r"-?[0-9]{1,30}")  # far below Python's 4300-digit limit for int()
 _MAC = re.compile(r"^[0-9a-f]{2}([:-]?)[0-9a-f]{2}(?:\1[0-9a-f]{2}){4}$")  # one separator
@@ -75,12 +74,30 @@ def normalize_mac(value: Any) -> str | None:
     return ":".join(digits[i : i + 2] for i in range(0, 12, 2))
 
 
+class RawDict(dict[str, Any]):
+    """A model's ``raw``: a dict that refuses changes.
+
+    A dict and not a ``MappingProxyType``, so models can be copied, pickled and turned into a
+    dict with :func:`dataclasses.asdict`. Nested values are shared with the payload.
+    """
+
+    __slots__ = ()
+
+    def _read_only(self, *_args: Any, **_kwargs: Any) -> NoReturn:
+        msg = "a model's raw data is read-only"
+        raise TypeError(msg)
+
+    __setitem__ = __delitem__ = __ior__ = _read_only
+    clear = pop = popitem = setdefault = update = _read_only
+
+    def __reduce__(self) -> tuple[type[RawDict], tuple[dict[str, Any]]]:
+        """Copy and pickle through the constructor, which takes the items without the setters."""
+        return (type(self), (dict(self),))
+
+
 def frozen(data: Mapping[str, Any]) -> Mapping[str, Any]:
     """Return a read-only copy of a payload for a model's ``raw`` (nested values are shared)."""
-    return MappingProxyType(dict(data))
-
-
-_EMPTY: Mapping[str, Any] = MappingProxyType({})
+    return RawDict(data)
 
 
 def raw_field() -> Any:
@@ -88,7 +105,7 @@ def raw_field() -> Any:
 
     It defaults to an empty mapping, so models can be built by hand, for example in tests.
     """
-    return field(default=_EMPTY, repr=False, compare=False, hash=False)
+    return field(default_factory=RawDict, repr=False, compare=False, hash=False)
 
 
 def to_int_or_str(value: Any) -> int | str | None:

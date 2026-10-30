@@ -24,7 +24,7 @@ from typing import Any
 import aiohttp
 
 from . import __version__
-from .client import _GETTER_READS, DEFAULT_HTTPS_PORT, DEFAULT_TIMEOUT, SrmClient
+from .client import DEFAULT_HTTPS_PORT, DEFAULT_TIMEOUT, GETTER_READS, SrmClient
 from .errors import (
     SrmApiError,
     SrmCertificateError,
@@ -119,7 +119,7 @@ async def collect_diagnostics(client: SrmClient, *, counts: bool = True) -> dict
     try:
         # Logs in once if there is no session yet, and respects a remembered failed login: a
         # wrong password is not tried again for the report.
-        await client._ensure_login()
+        await client.ensure_login()
         catalog = await client.get_catalog()
     except SrmError as err:
         report["error"] = _error(err)
@@ -127,14 +127,12 @@ async def collect_diagnostics(client: SrmClient, *, counts: bool = True) -> dict
     report["device"] = await _device(client)
     report["apis"] = {
         spec.api: [meta.get("minVersion"), meta.get("maxVersion")]
-        for specs in _GETTER_READS.values()
+        for specs in GETTER_READS.values()
         for spec in specs
         for meta in (catalog.get(spec.api, {}),)
     }
-    entries = await asyncio.gather(
-        *(_getter(client, name, counts=counts) for name in _GETTER_READS)
-    )
-    report["getters"] = dict(zip(_GETTER_READS, entries, strict=True))
+    entries = await asyncio.gather(*(_getter(client, name, counts=counts) for name in GETTER_READS))
+    report["getters"] = dict(zip(GETTER_READS, entries, strict=True))
     return report
 
 

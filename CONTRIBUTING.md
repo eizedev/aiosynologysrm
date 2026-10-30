@@ -36,7 +36,11 @@ planned next. Other labels:
 
 ## Development setup
 
-You need [uv](https://docs.astral.sh/uv/) and Python 3.12 or newer.
+You need [uv](https://docs.astral.sh/uv/) 0.13 and Python 3.12 or newer. `pyproject.toml` pins
+uv to 0.13.x (`[tool.uv] required-version`), because CI reads the version from there and
+`uv.lock` must not change between uv versions; another uv refuses to run in this repository.
+Install 0.13 (`uv self update 0.13.5`, or `pipx install uv==0.13.5`); a change of the pin comes
+as a pull request of its own, together with the lock file.
 
 ```sh
 git clone https://github.com/eizedev/aiosynologysrm.git
@@ -76,8 +80,11 @@ uv run pytest --cov
 
 ## Releases
 
-Maintainers tag `vX.Y.Z` on `main`. The release workflow runs the full CI, builds, publishes to
-PyPI via trusted publishing and creates the GitHub release. No tokens are stored in the repository.
+Maintainers first merge a pull request that turns `[Unreleased]` in `CHANGELOG.md` into
+`[X.Y.Z] - date` (with its compare link at the bottom), then tag `vX.Y.Z` on `main`. The release
+workflow runs the full CI, builds, checks with `scripts/release_notes.py` that the built version is
+the tag's and that the CHANGELOG has its section, publishes to PyPI via trusted publishing and
+creates the GitHub release with that section as its notes. No tokens are stored in the repository.
 The build requirements are pinned with hashes in `build-constraints.txt`; refresh them with
 
 ```sh

@@ -17,8 +17,10 @@ Every error from talking to the router derives from `SrmError`; wrong arguments 
 | `SrmApiError` | any other code, including unknown login codes during a restart (automatic logins then pause, 30 seconds doubling up to 15 minutes) | `UpdateFailed` |
 
 After a failed login (authentication, 2FA, blocked) the client sends no further logins until
-`login()` is called, so polling cannot run into SRM's auto block. Each request has its own
-`timeout`; one read can chain catalog, login and a retry, so wrap a whole update in
+`login()` is called, so polling cannot run into SRM's auto block. `ensure_login()` logs in only
+when there is no session and raises a remembered failed login again without sending anything.
+Each request has its own `timeout`, which starts once a request slot is free
+(`max_concurrency`); one read can chain catalog, login and a retry, so wrap a whole update in
 `asyncio.timeout()` if it must finish in a fixed time.
 
 Error messages never contain passwords or session data, so they are safe to log. A traceback also shows the chained aiohttp error, which names the router's host and port: replace that before you post a traceback in public.

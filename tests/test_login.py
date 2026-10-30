@@ -162,6 +162,18 @@ async def test_plain_http_is_logged_once_per_host(
     assert caplog.text.count("plain HTTP") == 1
 
 
+async def test_unverified_https_is_logged_once_per_host(
+    http: aiohttp.ClientSession, caplog: pytest.LogCaptureFixture
+) -> None:
+    SrmClient("198.51.100.8", "u", "p", session=http)
+    SrmClient("198.51.100.8", "u", "p", session=http, use_https=False, ssl=False)
+    assert "Not verifying" not in caplog.text  # plain HTTP has its own warning
+    SrmClient("198.51.100.8", "u", "p", session=http, ssl=False)
+    assert caplog.text.count("Not verifying the certificate of 198.51.100.8") == 1
+    SrmClient("198.51.100.8", "u", "p", session=http, ssl=False)
+    assert caplog.text.count("Not verifying") == 1
+
+
 async def test_connection_errors_keep_their_cause(http: aiohttp.ClientSession) -> None:
     client = SrmClient("127.0.0.1", "u", "p", session=http, port=1, use_https=False, timeout=2)
     with pytest.raises(SrmConnectionError) as err:

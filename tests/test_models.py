@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import copy
 import dataclasses
 import inspect
+import pickle
 import typing
 from collections.abc import Callable, Iterator
 from typing import Any
@@ -36,10 +38,10 @@ def _models(value: Any) -> Iterator[Any]:
 
 
 async def _everything(client: SrmClient) -> list[Any]:
-    from aiosynologysrm.client import _GETTER_READS  # noqa: PLC0415 - private on purpose
+    from aiosynologysrm import GETTER_READS  # noqa: PLC0415
 
     found: list[Any] = []
-    for name in _GETTER_READS:
+    for name in GETTER_READS:
         found.extend(_models(await getattr(client, name)()))
     return found
 
@@ -92,6 +94,37 @@ async def test_every_answer_parses_with_read_only_raw(
         with pytest.raises(TypeError):
             model.raw["new"] = 1  # type: ignore[index]
         hash(model)
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        lambda raw: raw.update(new=1),
+        lambda raw: raw.setdefault("new", 1),
+        lambda raw: raw.pop("model"),
+        lambda raw: raw.popitem(),
+        lambda raw: raw.clear(),
+        lambda raw: raw.__delitem__("model"),
+        lambda raw: raw.__ior__({"new": 1}),
+    ],
+)
+def test_raw_refuses_every_change(change: Callable[[Any], object]) -> None:
+    raw = SystemInfo.from_api({"model": "RT2600ac"}).raw
+    with pytest.raises(TypeError, match="read-only"):
+        change(raw)
+    assert raw == {"model": "RT2600ac"}
+
+
+async def test_models_copy_pickle_and_turn_into_dicts(make_client: MakeClient) -> None:
+    for model in await _everything(make_client()):
+        pickled = pickle.loads(pickle.dumps(model))  # noqa: S301 - our own data
+        for copied in (copy.copy(model), copy.deepcopy(model), pickled):
+            assert copied == model
+            assert copied.raw == model.raw
+            with pytest.raises(TypeError):
+                copied.raw["new"] = 1
+        as_dict = dataclasses.asdict(model)
+        assert as_dict["raw"] == model.raw  # router data: redact before sharing
 
 
 async def test_most_models_appear_in_the_router_answers(make_client: MakeClient) -> None:
