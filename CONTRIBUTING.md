@@ -87,9 +87,11 @@ the tag's and that the CHANGELOG has its section, publishes to PyPI via trusted 
 creates the GitHub release with that section as its notes. No tokens are stored in the repository.
 
 If a release fails after PyPI accepted it (the GitHub release job failed), use **Re-run failed
-jobs**: the built files are kept and nothing is uploaded twice. **Re-run all jobs** builds again,
-and the upload then fails because PyPI already has the version. If PyPI took only one of the two
-files, publish the next patch version instead; a version on PyPI cannot be replaced, only yanked.
+jobs**: the built files are kept and nothing is uploaded twice. Do not use **Re-run all jobs**: it
+builds again and fails, at the latest at PyPI, which already has the version. If PyPI took only one
+of the two files, publish the next patch version instead; a version on PyPI cannot be replaced,
+only yanked.
+
 The build requirements are pinned with hashes in `build-constraints.txt`; refresh them with
 
 ```sh

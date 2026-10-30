@@ -115,3 +115,16 @@ def test_check_accepts_one_version_of_any_kind(
     (tmp_path / "aiosynologysrm-0.9.0.tar.gz").write_text("", encoding="utf-8")
     assert release.main(["release_notes.py", "--check", str(tmp_path)]) == 1
     assert "disagree" in capsys.readouterr().err
+
+
+def test_subdirectories_and_links_are_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (tmp_path / "aiosynologysrm-0.9.0.tar.gz").write_text("", encoding="utf-8")
+    (tmp_path / "extra").mkdir()
+    assert release.main(["release_notes.py", "--check", str(tmp_path)]) == 1
+    assert "Only built files" in capsys.readouterr().err
+    (tmp_path / "extra").rmdir()
+    (tmp_path / "aiosynologysrm-0.9.0-py3-none-any.whl").symlink_to(tmp_path / "elsewhere")
+    assert release.main(["release_notes.py", "--check", str(tmp_path)]) == 1
+    assert "aiosynologysrm-0.9.0-py3-none-any.whl" in capsys.readouterr().err

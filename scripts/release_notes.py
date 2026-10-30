@@ -75,8 +75,17 @@ def main(argv: list[str]) -> int:
     if len(argv) != 3:  # noqa: PLR2004 - the script, the tag or --check, the dist directory
         print(__doc__, file=sys.stderr)
         return 2
-    files = sorted(p.name for p in Path(argv[2]).iterdir() if p.is_file())
+    entries = sorted(Path(argv[2]).iterdir())
     try:
+        # upload-artifact also takes visible subdirectories and the targets of links: refuse them.
+        odd = [
+            p.name
+            for p in entries
+            if not p.name.startswith(".") and (p.is_symlink() or not p.is_file())
+        ]
+        if odd:
+            raise ReleaseError(f"Only built files belong in the dist directory: {', '.join(odd)}")
+        files = [p.name for p in entries]
         if argv[1] == "--check":
             versions = built_versions(files)
             if len(versions) != 1:
