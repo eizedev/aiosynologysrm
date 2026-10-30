@@ -22,7 +22,7 @@ from aiosynologysrm import (
 from aiosynologysrm._parse import SrmModel, to_int, to_timedelta
 from aiosynologysrm.reads import ALL_READS, READ_METHODS
 
-from .conftest import FakeSrm
+from .conftest import MR2200AC, RT2600AC, FakeSrm, load
 
 MakeClient = Callable[..., SrmClient]
 
@@ -216,6 +216,7 @@ def test_allowlist_is_pinned() -> None:
             ("SYNO.Wifi.Radio.Setting", "get", (1,), ()),
             ("SYNO.Wifi.Radio.Status", "get", (1,), ()),
             ("SYNO.Wifi.Device", "get", (1,), ()),
+            ("SYNO.Wifi.Network.Setting", "get", (1,), ()),
             ("SYNO.Mesh.Network.EthPortInfo", "get", (1,), ()),
             ("SYNO.Mesh.Node.List", "get", (4,), ()),
             (
@@ -226,3 +227,24 @@ def test_allowlist_is_pinned() -> None:
             ),
         ]
     )
+    # Reads that keep only listed keys, because SRM sends secrets along: a change shows here too.
+    kept = {s.api: s.keep for s in ALL_READS if s.keep is not None}
+    assert set(kept) == {"SYNO.Wifi.Network.Setting"}
+    assert (
+        not {"security", "password_rotate", "password", "mail_list"}
+        & kept["SYNO.Wifi.Network.Setting"]
+    )
+    # Exactly the keys of the recorded answers (both devices), which hold no secrets.
+    recorded: set[str] = set()
+    for folder in (RT2600AC, MR2200AC):
+        recorded |= _keys(load(folder / "wifi_networks.json"))
+    assert kept["SYNO.Wifi.Network.Setting"] == recorded
+
+
+def _keys(value: object) -> set[str]:
+    """Every key in a JSON answer, at any depth."""
+    if isinstance(value, dict):
+        return set(value) | {k for v in value.values() for k in _keys(v)}
+    if isinstance(value, list):
+        return {k for v in value for k in _keys(v)}
+    return set()

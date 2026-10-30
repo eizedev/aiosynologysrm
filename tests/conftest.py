@@ -44,6 +44,7 @@ API_FIXTURES: dict[tuple[str, str], tuple[str, int, int]] = {
     ("SYNO.Wifi.Radio.Setting", "get"): ("wifi_radio_settings", 1, 1),
     ("SYNO.Wifi.Radio.Status", "get"): ("wifi_radio_status", 1, 1),
     ("SYNO.Wifi.Device", "get"): ("wifi_devices", 1, 1),
+    ("SYNO.Wifi.Network.Setting", "get"): ("wifi_networks", 1, 2),
     ("SYNO.Mesh.Network.EthPortInfo", "get"): ("eth_port_info", 1, 1),
     ("SYNO.Mesh.Node.List", "get"): ("mesh_nodes", 4, 4),
     ("SYNO.Core.Storage.Volume", "list"): ("usb_volumes", 1, 1),

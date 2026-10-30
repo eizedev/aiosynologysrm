@@ -35,6 +35,12 @@ uv run mypy                   # strict
   `SrmModel`, one per SRM object, every field declared as `name: T = srm("srmKey", converter)`
   with `name == snake("srmKey")`, then `raw: Mapping[str, Any] = raw_field()`. No renaming, no
   interpretation in models; derived values go into `helpers.py`.
+- **An answer with secrets keeps only listed keys, never filters.** When SRM sends a key,
+  password or mail address along with what a read is for (`SYNO.Wifi.Network.Setting` does), give
+  the spec a `keep` list of the measured keys without the secrets; the client removes everything
+  else before `read()` returns. Never switch such a read to a list of keys to remove. A new key
+  joins `keep` only after checking what it holds on a real router. Record such a fixture's raw
+  file through `client.read()` (CONTRIBUTING.md), so it never holds secrets either.
 - **Parsers never raise.** Use the converters in `_parse.py` (`to_int`, `to_str`, `to_bool`,
   `to_timedelta`, ...). Every exported model is fuzzed by `tests/test_robustness.py` automatically.
 - **Units only when verified** on a router, and then in the field's docstring, not its name.

@@ -124,6 +124,14 @@ before it is parsed, which bounds the memory a broken or hostile router can make
 
 ## Privacy
 
+- **An answer that carries secrets keeps only known keys.** `SYNO.Wifi.Network.Setting` answers
+  with each network's Wi-Fi key (`security`) and the mail addresses of the guest key rotation
+  (`password_rotate`). Its read lists the keys it keeps (`ReadSpec.keep`): the ones measured on
+  SRM 1.3.2, without these two. The client removes every other key, at any depth and with all
+  below it, before `read()` returns, so the secrets are in no model, no `raw`, no diagnostics and
+  no fixture, and neither is a key a later firmware adds until someone checks it and adds it to
+  the list. This is the one place where `raw` does not mirror SRM; `config_hash()` therefore does
+  not see a changed Wi-Fi key.
 - Credentials travel in the POST body, never in a URL, so they do not end up in proxy or
   web server logs.
 - Exception messages carry the error code and API name, never the password, the session id or
@@ -176,3 +184,5 @@ represents data, it does not interpret it". In practice:
 - **Everything derived lives in `aiosynologysrm.helpers`**: joins (`pair_radios`, `hits_by_rule`),
   classifications (`address_scope`, `is_root`), parsed durations and dates, sums and percentages,
   and `config_hash`. Each helper documents its rule, so a caller can decide whether it fits.
+  `network_bands` does not take a network's schedule into account (not measured with an active
+  one).

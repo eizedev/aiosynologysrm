@@ -27,6 +27,10 @@ class ReadSpec:
     method: str
     versions: tuple[int, ...]
     params: tuple[tuple[str, str], ...] = field(default=())
+    keep: frozenset[str] | None = field(default=None)
+    """For an answer that carries secrets: the only keys that survive, at any depth. Every other
+    key, with all below it, is removed before anyone sees the answer, also keys a later firmware
+    adds. ``None`` keeps the answer as it is; an empty set keeps nothing."""
 
     def __post_init__(self) -> None:
         """Refuse to define anything that is not a read."""
@@ -71,6 +75,50 @@ AUTO_BLOCK: Final = ReadSpec("SYNO.Core.Security.AutoBlock", "get", (1,))
 WIFI_RADIO_SETTINGS: Final = ReadSpec("SYNO.Wifi.Radio.Setting", "get", (1,))
 WIFI_RADIO_STATUS: Final = ReadSpec("SYNO.Wifi.Radio.Status", "get", (1,))
 WIFI_DEVICES: Final = ReadSpec("SYNO.Wifi.Device", "get", (1,))
+# Version 2 refuses get (103). The answer carries each network's Wi-Fi key (``security``) and the
+# mail addresses of the guest key rotation (``password_rotate``). Only the keys measured on SRM
+# 1.3.2 without these are kept; a key a later firmware adds stays out until it is checked.
+WIFI_NETWORKS: Final = ReadSpec(
+    "SYNO.Wifi.Network.Setting",
+    "get",
+    (1,),
+    keep=frozenset(
+        {
+            "advance",
+            "ampdu",
+            "ap_enable_11r",
+            "ap_isolation",
+            "ap_mcast_translating",
+            "ap_mumimo",
+            "country_abbrev_override_enable",
+            "dtim",
+            "enable",
+            "enable_client_isolation",
+            "enable_extended_nss",
+            "enable_ofdma",
+            "enable_smart_connect",
+            "hide_ssid",
+            "id",
+            "key_rotation",
+            "mac_filter",
+            "max_connection",
+            "mode",
+            "name",
+            "network_type",
+            "pmf_mode",
+            "profile_id",
+            "profiles",
+            "radio_list",
+            "radio_type",
+            "sc_disable_legacy_steering",
+            "schedule",
+            "schedule_value",
+            "ssid",
+            "uapsd_enable",
+            "valid_for",
+        }
+    ),
+)
 ETH_PORT_INFO: Final = ReadSpec("SYNO.Mesh.Network.EthPortInfo", "get", (1,))
 MESH_NODES: Final = ReadSpec("SYNO.Mesh.Node.List", "get", (4,))
 USB_VOLUMES: Final = ReadSpec(
@@ -103,6 +151,7 @@ ALL_READS: Final = (
     WIFI_RADIO_SETTINGS,
     WIFI_RADIO_STATUS,
     WIFI_DEVICES,
+    WIFI_NETWORKS,
     ETH_PORT_INFO,
     MESH_NODES,
     USB_VOLUMES,

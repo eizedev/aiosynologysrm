@@ -63,6 +63,7 @@ This page is the single place that says what this library supports and how sure 
 | `get_wifi_radio_settings()` | `SYNO.Wifi.Radio.Setting` `get` | 1 | v1 |
 | `get_wifi_radio_status()` | `SYNO.Wifi.Radio.Status` `get` | 1 | v1 |
 | `get_wifi_devices()` | `SYNO.Wifi.Device` `get` | 1 | v1 |
+| `get_wifi_networks()` | `SYNO.Wifi.Network.Setting` `get` | 1 (2 refuses `get`) | v1 |
 | `get_eth_port_info()` | `SYNO.Mesh.Network.EthPortInfo` `get` | 1 | v1 |
 | `get_mesh_nodes()` | `SYNO.Mesh.Node.List` `get` | 4 | v4 |
 | `get_usb_volumes()` | `SYNO.Core.Storage.Volume` `list` (`limit=-1&offset=0&location=external`) | 1 | v1 |

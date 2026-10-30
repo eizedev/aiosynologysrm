@@ -24,6 +24,7 @@ from .hardware import (
     StorageVolume,
     WifiDevice,
     WifiDevices,
+    WifiNetworkProfile,
     WifiRadioSetting,
     WifiRadioState,
 )
@@ -42,6 +43,7 @@ __all__ = [
     "is_root",
     "lease_remaining",
     "locate_clients",
+    "network_bands",
     "normalize_mac",
     "pair_radios",
     "split_addresses",
@@ -137,6 +139,30 @@ def pair_radios(
     """Pair each radio's settings with its live state by ``radio_type``."""
     live = {state.radio_type: state for state in status}
     return tuple((setting, live.get(setting.radio_type)) for setting in settings)
+
+
+SMART_CONNECT = "SmartConnect"
+
+
+def network_bands(profile: WifiNetworkProfile) -> tuple[tuple[str, bool | None], ...]:
+    """Whether a Wi-Fi network is on, per band: ``(("2.4G", True), ("5G", False), ...)``.
+
+    With Smart Connect on, the ``SmartConnect`` entry decides for every band and the bands' own
+    entries are ignored; with it off, each band's entry decides. Measured on SRM 1.3.2: a router
+    with Smart Connect on lists its guest network's bands as off while the network is on, and an
+    access point with Smart Connect off lists ``SmartConnect`` as on while one band is off.
+    ``None`` means SRM did not say, also when Smart Connect is on without its entry.
+
+    A schedule (``WifiNetworkRadio.schedule``) is not taken into account: a network that a
+    schedule switches off at times still counts as on here. Not measured with an active schedule.
+    """
+    entries = [r for r in profile.radio_list if r.radio_type is not None]
+    smart = next((r for r in entries if r.radio_type == SMART_CONNECT), None)
+    bands = [r for r in entries if r.radio_type != SMART_CONNECT]
+    if profile.enable_smart_connect:
+        state = smart.enable if smart is not None else None
+        return tuple((b.radio_type or "", state) for b in bands)
+    return tuple((b.radio_type or "", b.enable) for b in bands)
 
 
 def cpu_total_percent(cpu: UtilizationCpu | None) -> int | None:

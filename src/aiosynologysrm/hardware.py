@@ -56,6 +56,55 @@ class WifiRadioStatus(SrmModel):
 
 
 @dataclass(frozen=True, slots=True)
+class WifiNetworkSchedule(SrmModel):
+    """When a Wi-Fi network is on, if a schedule limits it."""
+
+    enable: bool | None = srm("enable", to_bool)
+    mode: str | None = srm("mode", to_str)
+    raw: Mapping[str, Any] = raw_field()
+
+
+@dataclass(frozen=True, slots=True)
+class WifiNetworkRadio(SrmModel):
+    """One network on one band: ``radio_type`` is ``SmartConnect`` or a band such as ``5G-2``.
+
+    With Smart Connect on (``WifiNetworkProfile.enable_smart_connect``) the ``SmartConnect`` entry
+    applies to all bands; otherwise each band has its own. The network's Wi-Fi key is not part of
+    the model: the client keeps only known keys of this answer.
+    """
+
+    radio_type: str | None = srm("radio_type", to_str)
+    enable: bool | None = srm("enable", to_bool)
+    ssid: str | None = srm("ssid", to_str)
+    hide_ssid: bool | None = srm("hide_ssid", to_bool)
+    enable_client_isolation: bool | None = srm("enable_client_isolation", to_bool)
+    max_connection: int | None = srm("max_connection", to_int)
+    schedule: WifiNetworkSchedule | None = srm("schedule", one(WifiNetworkSchedule))
+    raw: Mapping[str, Any] = raw_field()
+
+
+@dataclass(frozen=True, slots=True)
+class WifiNetworkProfile(SrmModel):
+    """One Wi-Fi network (SRM: profile), for example the primary or the guest network."""
+
+    id: int | None = srm("id", to_int)
+    name: str | None = srm("name", to_str)
+    network_type: str | None = srm("network_type", to_str)
+    """``primary`` or ``guest``."""
+    enable_smart_connect: bool | None = srm("enable_smart_connect", to_bool)
+    radio_list: tuple[WifiNetworkRadio, ...] = srm("radio_list", many(WifiNetworkRadio))
+    raw: Mapping[str, Any] = raw_field()
+
+
+@dataclass(frozen=True, slots=True)
+class WifiNetworks(SrmModel):
+    """The answer of ``SYNO.Wifi.Network.Setting`` ``get``: every Wi-Fi network and its bands."""
+
+    profiles: tuple[WifiNetworkProfile, ...] = srm("profiles", many(WifiNetworkProfile))
+    raw: Mapping[str, Any] = raw_field()
+
+
+@dataclass(frozen=True, slots=True)
 class WifiDevice(SrmModel):
     """A client on this device's own Wi-Fi (``SYNO.Wifi.Device`` ``get``).
 
