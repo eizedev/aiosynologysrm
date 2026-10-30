@@ -43,7 +43,8 @@ CHANGELOG = """# Changelog
 [Unreleased]: https://example.invalid/compare/v0.9.0...HEAD
 [0.9.0]: https://example.invalid/compare/v0.8.0...v0.9.0
 """
-BUILT = ["aiosynologysrm-0.9.0-py3-none-any.whl", "aiosynologysrm-0.9.0.tar.gz"]
+# As uv build writes them, with its .gitignore (measured with uv 0.13.5).
+BUILT = [".gitignore", "aiosynologysrm-0.9.0-py3-none-any.whl", "aiosynologysrm-0.9.0.tar.gz"]
 
 
 def test_notes_are_the_versions_section_with_the_docs() -> None:
@@ -66,6 +67,7 @@ def test_the_last_section_ends_at_the_links() -> None:
         ("v0.9.0", ["aiosynologysrm-0.9.1.dev3+g1234567.tar.gz"], CHANGELOG, "built version"),
         ("v0.9.0", [*BUILT, "aiosynologysrm-0.8.0.tar.gz"], CHANGELOG, "built version"),
         ("v0.9.0", [], CHANGELOG, "no built files"),
+        ("v0.9.0", [".gitignore"], CHANGELOG, "no built files"),
         ("v0.9.0", ["notes.md"], CHANGELOG, "Unexpected file"),
         ("v0.9.0", BUILT, "# Changelog\n", "no section"),
         ("v0.9.0", BUILT, "## [0.9.0] - 2026-10-30\n\n## [0.8.0]\n", "is empty"),
@@ -101,3 +103,15 @@ def _released_version() -> str:
     match = re.search(r"^## \[(\d+\.\d+\.\d+)\]", text, re.MULTILINE)
     assert match is not None
     return match[1]
+
+
+def test_check_accepts_one_version_of_any_kind(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    for name in (".gitignore", "aiosynologysrm-0.9.1.dev2+g1234567.tar.gz"):
+        (tmp_path / name).write_text("", encoding="utf-8")
+    assert release.main(["release_notes.py", "--check", str(tmp_path)]) == 0
+    assert "0.9.1.dev2+g1234567" in capsys.readouterr().out
+    (tmp_path / "aiosynologysrm-0.9.0.tar.gz").write_text("", encoding="utf-8")
+    assert release.main(["release_notes.py", "--check", str(tmp_path)]) == 1
+    assert "disagree" in capsys.readouterr().err
