@@ -30,7 +30,7 @@ class ReadSpec:
     keep: frozenset[str] | None = field(default=None)
     """For an answer that carries secrets: the only keys that survive, at any depth. Every other
     key, with all below it, is removed before anyone sees the answer, also keys a later firmware
-    adds. ``None`` keeps the answer as it is."""
+    adds. ``None`` keeps the answer as it is; an empty set keeps nothing."""
 
     def __post_init__(self) -> None:
         """Refuse to define anything that is not a read."""
