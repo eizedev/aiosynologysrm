@@ -6,7 +6,6 @@ import asyncio
 import ipaddress
 import json
 import logging
-import re
 import secrets
 from collections.abc import Awaitable, Callable, Mapping
 from functools import partial
@@ -184,37 +183,14 @@ def _is_ipv6(host: str) -> bool:
         return False
 
 
-# Words in a key name that mark a secret; checked on every key of a read that has a ``drop``.
-_SECRET_WORDS: Final = frozenset({"psk", "secret", "token", "pin", "credential", "credentials"})
-_KEY_WORDS: Final = re.compile(r"[^a-z0-9]+")
-
-
-def _is_secret(key: str, drop: frozenset[str]) -> bool:
-    """Whether a key is one a read drops: named in ``drop`` or named like a secret.
-
-    Any case. A word starting with ``pass`` or ``mail``, a secret word, or ``key`` as the last
-    word (``wpa_key``, not ``key_rotation``).
-    """
-    words = [w for w in _KEY_WORDS.split(key.lower()) if w]
-    return (
-        key.lower() in drop
-        or any(w.startswith(("pass", "mail")) or w in _SECRET_WORDS for w in words)
-        or (bool(words) and words[-1].endswith("key"))
-    )
-
-
-def _without(value: Any, drop: frozenset[str]) -> Any:
-    """Return an answer without the secrets of a read that has a ``drop``, at any depth."""
-    if not drop:
+def _only(value: Any, keep: frozenset[str] | None) -> Any:
+    """Return an answer with only the keys in ``keep``, at any depth (a read's ``keep``)."""
+    if keep is None:
         return value
     if isinstance(value, Mapping):
-        return {
-            k: _without(v, drop)
-            for k, v in value.items()
-            if not (isinstance(k, str) and _is_secret(k, drop))
-        }
+        return {k: _only(v, keep) for k, v in value.items() if k in keep}
     if isinstance(value, list):
-        return [_without(v, drop) for v in value]
+        return [_only(v, keep) for v in value]
     return value
 
 
@@ -658,7 +634,7 @@ class SrmClient:
             if envelope["success"]:
                 self._session_failure = None
                 try:
-                    return _without(envelope.get("data"), spec.drop)
+                    return _only(envelope.get("data"), spec.keep)
                 except RecursionError:
                     raise SrmResponseError("Response nested too deeply") from None
             code = self._error_code(envelope)
@@ -797,7 +773,7 @@ class SrmClient:
     async def get_wifi_networks(self) -> WifiNetworks:
         """Every Wi-Fi network with its bands, on or off (``SYNO.Wifi.Network.Setting``).
 
-        SRM sends the Wi-Fi keys with it; they are dropped before this method sees the answer.
+        SRM sends the Wi-Fi keys with it; only known keys are kept, so they never arrive here.
         """
         return WifiNetworks.from_api(await self._read_object(WIFI_NETWORKS))
 

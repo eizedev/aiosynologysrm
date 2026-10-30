@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import sys
 from collections.abc import Callable
+from unittest.mock import patch
 
 import pytest
 
@@ -16,6 +18,7 @@ from aiosynologysrm import (
     WifiNetworkProfile,
     helpers,
 )
+from aiosynologysrm.client import _only
 from aiosynologysrm.reads import WIFI_NETWORKS
 
 from .conftest import MR2200AC, FakeSrm, responses
@@ -160,17 +163,19 @@ async def test_wifi_keys_never_reach_the_caller(fake: FakeSrm, make_client: Make
                 "port": 1812,
                 "security_level": "wpa2_personal",
             }
-            # Keys SRM might add, under another spelling or place: caught by their names.
+            # Keys SRM might add, under another spelling or place: not on the list, so removed.
             band["Security"] = {"password": "wifi-key-1234"}
+            band["wpaPassphrase"] = "wifi-key-1234"
             band["wps"] = {"wps_pin": "12345670", "enable": False}
-            band["advance"]["radius_secret"] = "wifi-key-1234"
+            band["advance"]["radiusSecret"] = "wifi-key-1234"
     client = make_client()
     for result in (await client.read(WIFI_NETWORKS), (await client.get_wifi_networks()).raw):
         text = json.dumps(result, default=str)
         for secret in ("wifi-key-1234", "someone@example.invalid", "12345670", "192.0.2.50"):
             assert secret not in text
         assert '"security"' not in text
-        assert '"key_rotation"' in text  # a number, not a key: kept
+        assert '"wps"' not in text
+        assert '"key_rotation"' in text  # on the list: kept
     networks = await client.get_wifi_networks()
     for profile in networks.profiles:
         assert "password_rotate" not in profile.raw
@@ -180,14 +185,22 @@ async def test_wifi_keys_never_reach_the_caller(fake: FakeSrm, make_client: Make
     assert (await client.get_system_info()).raw["security"] == "kept"
 
 
-async def test_a_too_deep_answer_is_a_response_error(
-    fake: FakeSrm, make_client: MakeClient
-) -> None:
+def test_a_too_deep_answer_is_a_response_error() -> None:
     deep: dict[str, object] = {}
     node = deep
-    for _ in range(5000):
-        node["x"] = {}
-        node = node["x"]  # type: ignore[assignment]
-    fake.responses[("SYNO.Wifi.Network.Setting", "get")] = {"profiles": [deep]}
-    with pytest.raises(SrmResponseError):
+    for _ in range(sys.getrecursionlimit() + 10):
+        node["profiles"] = {}
+        node = node["profiles"]  # type: ignore[assignment]
+    with pytest.raises(RecursionError):
+        _only(deep, WIFI_NETWORKS.keep)
+
+
+async def test_the_client_turns_a_too_deep_answer_into_a_response_error(
+    fake: FakeSrm, make_client: MakeClient
+) -> None:
+    fake.responses[("SYNO.Wifi.Network.Setting", "get")] = {"profiles": []}
+    with (
+        patch("aiosynologysrm.client._only", side_effect=RecursionError),
+        pytest.raises(SrmResponseError, match="nested too deeply"),
+    ):
         await make_client().get_wifi_networks()

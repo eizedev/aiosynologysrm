@@ -227,7 +227,11 @@ def test_allowlist_is_pinned() -> None:
             ),
         ]
     )
-    # What each read drops before anyone sees the answer: shrinking it has to show here too.
-    assert {s.api: sorted(s.drop) for s in ALL_READS if s.drop} == {
-        "SYNO.Wifi.Network.Setting": ["password_rotate", "security"],
-    }
+    # Reads that keep only listed keys, because SRM sends secrets along: a change shows here too.
+    kept = {s.api: s.keep for s in ALL_READS if s.keep is not None}
+    assert set(kept) == {"SYNO.Wifi.Network.Setting"}
+    assert (
+        not {"security", "password_rotate", "password", "mail_list"}
+        & kept["SYNO.Wifi.Network.Setting"]
+    )
+    assert len(kept["SYNO.Wifi.Network.Setting"]) == 32

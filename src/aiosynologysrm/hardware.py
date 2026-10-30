@@ -70,7 +70,7 @@ class WifiNetworkRadio(SrmModel):
 
     With Smart Connect on (``WifiNetworkProfile.enable_smart_connect``) the ``SmartConnect`` entry
     applies to all bands; otherwise each band has its own. The network's Wi-Fi key is not part of
-    the model: the client drops it on arrival.
+    the model: the client keeps only known keys of this answer.
     """
 
     radio_type: str | None = srm("radio_type", to_str)

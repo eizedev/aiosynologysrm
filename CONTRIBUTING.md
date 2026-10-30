@@ -66,7 +66,7 @@ uv run pytest --cov
   `python scripts/anonymize.py <raw.json> tests/fixtures/<model>-srm-<version>/<name>.json`.
   The script refuses to write anything when a text field is not classified yet (add it to one of
   its lists) or an original value is left; check the output by eye as well before committing.
-  Record the raw file as the client returns it, so a read's `drop` already applies:
+  Record the raw file as the client returns it, so a read's `keep` list already applies:
 
   ```python
   data = await client.read(WIFI_NETWORKS)  # the Wi-Fi keys are gone here

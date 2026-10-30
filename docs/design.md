@@ -124,14 +124,14 @@ before it is parsed, which bounds the memory a broken or hostile router can make
 
 ## Privacy
 
-- **Secrets SRM sends along are dropped on arrival.** `SYNO.Wifi.Network.Setting` answers with
-  each network's Wi-Fi key (`security`) and the mail addresses of the guest key rotation
-  (`password_rotate`). The read lists these keys (`ReadSpec.drop`), and the client removes them at
-  any depth before `read()` returns, so they are in no model, no `raw`, no diagnostics and no
-  fixture. As a second net it also removes, in such a read, every key named like a secret
-  (password, PSK, secret, token, PIN, mail, `..._key`, in any case), for keys a later firmware
-  might add. This is the one place where `raw` does not mirror SRM; `config_hash()` therefore
-  does not see a changed Wi-Fi key.
+- **An answer that carries secrets keeps only known keys.** `SYNO.Wifi.Network.Setting` answers
+  with each network's Wi-Fi key (`security`) and the mail addresses of the guest key rotation
+  (`password_rotate`). Its read lists the keys it keeps (`ReadSpec.keep`): the ones measured on
+  SRM 1.3.2, without these two. The client removes every other key, at any depth and with all
+  below it, before `read()` returns, so the secrets are in no model, no `raw`, no diagnostics and
+  no fixture, and neither is a key a later firmware adds until someone checks it and adds it to
+  the list. This is the one place where `raw` does not mirror SRM; `config_hash()` therefore does
+  not see a changed Wi-Fi key.
 - Credentials travel in the POST body, never in a URL, so they do not end up in proxy or
   web server logs.
 - Exception messages carry the error code and API name, never the password, the session id or

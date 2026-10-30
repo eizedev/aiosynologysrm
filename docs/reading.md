@@ -28,7 +28,7 @@ interface's requests map 1:1. Values keep SRM's units and formats; `raw` holds t
 | `get_wifi_radio_settings()` | `SYNO.Wifi.Radio.Setting` | channel (0 = automatic), width, power per radio |
 | `get_wifi_radio_status()` | `SYNO.Wifi.Radio.Status` | channel in use and BSSID per radio |
 | `get_wifi_devices()` | `SYNO.Wifi.Device` | signal, link rate, connection time, traffic of each Wi-Fi client |
-| `get_wifi_networks()` | `SYNO.Wifi.Network.Setting` | every Wi-Fi network (primary, guest) with its bands, SSID, on or off; the Wi-Fi keys are dropped |
+| `get_wifi_networks()` | `SYNO.Wifi.Network.Setting` | every Wi-Fi network (primary, guest) with its bands, SSID, on or off; only known keys are kept, so the Wi-Fi keys never arrive |
 | `get_eth_port_info()` | `SYNO.Mesh.Network.EthPortInfo` | link state and speed of every Ethernet port |
 | `get_mesh_nodes()` | `SYNO.Mesh.Node.List` | the router and its mesh points |
 | `get_usb_volumes()` | `SYNO.Core.Storage.Volume` | USB storage: file system, size, free space |
@@ -40,7 +40,7 @@ counters per rule (`hits_by_rule`), radio settings paired with their live state 
 whether a Wi-Fi network is on per band, with or without Smart Connect (`network_bands`),
 durations and dates from SRM's text (`up_time`, `lease_remaining`, `firmware_date`), used space,
 and `config_hash()` to detect configuration changes from the models' `raw` (without what a read
-drops, such as Wi-Fi keys).
+leaves out, such as Wi-Fi keys).
 
 See the [changelog](https://github.com/eizedev/aiosynologysrm/blob/main/CHANGELOG.md) for what each
 release adds.
