@@ -28,7 +28,9 @@ class ReadSpec:
     versions: tuple[int, ...]
     params: tuple[tuple[str, str], ...] = field(default=())
     drop: frozenset[str] = field(default=frozenset())
-    """Keys removed from the answer at any depth before anyone sees it (secrets SRM sends along)."""
+    """Keys (lower case) removed from the answer at any depth before anyone sees it: secrets SRM
+    sends along. A read with a ``drop`` also loses every key named like a secret (password, PSK,
+    secret, token, PIN, mail, ``..._key``), in any case, as a second net for keys SRM may add."""
 
     def __post_init__(self) -> None:
         """Refuse to define anything that is not a read."""

@@ -11,9 +11,10 @@ All notable changes to this project are documented here. The format follows
 - `get_wifi_networks()` (`SYNO.Wifi.Network.Setting`): every Wi-Fi network (primary, guest) with
   its bands, SSID and whether it is on. SRM sends the Wi-Fi keys and the mail addresses of the
   guest key rotation along; the client drops them before anyone sees the answer
-  (`ReadSpec.drop`).
+  (`ReadSpec.drop`), together with any key named like a secret.
 - `helpers.network_bands()`: whether a network is on per band, with Smart Connect deciding for all
-  bands when it is on (measured on an RT2600ac and an MR2200ac).
+  bands when it is on (measured on an RT2600ac and an MR2200ac); schedules are not taken into
+  account.
 
 ## [0.9.0] - 2026-10-30
 

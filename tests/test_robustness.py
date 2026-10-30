@@ -227,3 +227,7 @@ def test_allowlist_is_pinned() -> None:
             ),
         ]
     )
+    # What each read drops before anyone sees the answer: shrinking it has to show here too.
+    assert {s.api: sorted(s.drop) for s in ALL_READS if s.drop} == {
+        "SYNO.Wifi.Network.Setting": ["password_rotate", "security"],
+    }

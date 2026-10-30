@@ -5,10 +5,13 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 
+import pytest
+
 from aiosynologysrm import (
     EthPortInfo,
     MeshNodes,
     SrmClient,
+    SrmResponseError,
     StorageVolume,
     WifiNetworkProfile,
     helpers,
@@ -126,25 +129,48 @@ async def test_wifi_networks_per_band(fake: FakeSrm, make_client: MakeClient) ->
 
 
 def test_network_bands_without_a_smart_connect_entry() -> None:
+    # Smart Connect on but no entry for it: the bands' own entries do not decide, so unknown.
     profile = WifiNetworkProfile.from_api(
-        {"enable_smart_connect": True, "radio_list": [{"radio_type": "2.4G", "enable": True}, {}]}
+        {"enable_smart_connect": True, "radio_list": [{"radio_type": "2.4G", "enable": False}, {}]}
     )
-    assert helpers.network_bands(profile) == (("2.4G", True),)
+    assert helpers.network_bands(profile) == (("2.4G", None),)
 
 
 async def test_wifi_keys_never_reach_the_caller(fake: FakeSrm, make_client: MakeClient) -> None:
     key = ("SYNO.Wifi.Network.Setting", "get")
     answer = fake.responses[key]
+    # The structure SRM 1.3.2 sends (key names as measured, values made up): the key and a RADIUS
+    # server per band, the guest key rotation with its mail recipients per network.
     for profile in answer["profiles"]:
-        profile["password_rotate"] = {"mail_list": ["someone@example.invalid"]}
+        profile["radio_list"][0]["password_rotate"] = {
+            "date": "2026/10/30",
+            "enable": True,
+            "enable_notification": True,
+            "hour": 3,
+            "mail_list": ["someone@example.invalid"],
+            "minute": 0,
+            "mode": "periodical",
+            "schedule": "1",
+            "strength": "high",
+        }
         for band in profile["radio_list"]:
-            band["security"] = {"password": "wifi-key-1234", "security_level": "wpa2"}
+            band["security"] = {
+                "ip": "192.0.2.50",
+                "password": "wifi-key-1234",
+                "port": 1812,
+                "security_level": "wpa2_personal",
+            }
+            # Keys SRM might add, under another spelling or place: caught by their names.
+            band["Security"] = {"password": "wifi-key-1234"}
+            band["wps"] = {"wps_pin": "12345670", "enable": False}
+            band["advance"]["radius_secret"] = "wifi-key-1234"
     client = make_client()
     for result in (await client.read(WIFI_NETWORKS), (await client.get_wifi_networks()).raw):
         text = json.dumps(result, default=str)
-        assert "wifi-key-1234" not in text
-        assert "someone@example.invalid" not in text
+        for secret in ("wifi-key-1234", "someone@example.invalid", "12345670", "192.0.2.50"):
+            assert secret not in text
         assert '"security"' not in text
+        assert '"key_rotation"' in text  # a number, not a key: kept
     networks = await client.get_wifi_networks()
     for profile in networks.profiles:
         assert "password_rotate" not in profile.raw
@@ -152,3 +178,16 @@ async def test_wifi_keys_never_reach_the_caller(fake: FakeSrm, make_client: Make
     # Other reads are passed on as they are.
     fake.responses[("SYNO.Core.System", "info")]["security"] = "kept"
     assert (await client.get_system_info()).raw["security"] == "kept"
+
+
+async def test_a_too_deep_answer_is_a_response_error(
+    fake: FakeSrm, make_client: MakeClient
+) -> None:
+    deep: dict[str, object] = {}
+    node = deep
+    for _ in range(5000):
+        node["x"] = {}
+        node = node["x"]  # type: ignore[assignment]
+    fake.responses[("SYNO.Wifi.Network.Setting", "get")] = {"profiles": [deep]}
+    with pytest.raises(SrmResponseError):
+        await make_client().get_wifi_networks()

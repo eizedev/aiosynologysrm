@@ -39,7 +39,8 @@ Anything derived is in `aiosynologysrm.helpers`, kept apart from the models on p
 counters per rule (`hits_by_rule`), radio settings paired with their live state (`pair_radios`),
 whether a Wi-Fi network is on per band, with or without Smart Connect (`network_bands`),
 durations and dates from SRM's text (`up_time`, `lease_remaining`, `firmware_date`), used space,
-and `config_hash()` to detect configuration changes from the models' `raw`.
+and `config_hash()` to detect configuration changes from the models' `raw` (without what a read
+drops, such as Wi-Fi keys).
 
 See the [changelog](https://github.com/eizedev/aiosynologysrm/blob/main/CHANGELOG.md) for what each
 release adds.

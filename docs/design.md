@@ -128,7 +128,10 @@ before it is parsed, which bounds the memory a broken or hostile router can make
   each network's Wi-Fi key (`security`) and the mail addresses of the guest key rotation
   (`password_rotate`). The read lists these keys (`ReadSpec.drop`), and the client removes them at
   any depth before `read()` returns, so they are in no model, no `raw`, no diagnostics and no
-  fixture. This is the one place where `raw` does not mirror SRM.
+  fixture. As a second net it also removes, in such a read, every key named like a secret
+  (password, PSK, secret, token, PIN, mail, `..._key`, in any case), for keys a later firmware
+  might add. This is the one place where `raw` does not mirror SRM; `config_hash()` therefore
+  does not see a changed Wi-Fi key.
 - Credentials travel in the POST body, never in a URL, so they do not end up in proxy or
   web server logs.
 - Exception messages carry the error code and API name, never the password, the session id or
@@ -181,3 +184,5 @@ represents data, it does not interpret it". In practice:
 - **Everything derived lives in `aiosynologysrm.helpers`**: joins (`pair_radios`, `hits_by_rule`),
   classifications (`address_scope`, `is_root`), parsed durations and dates, sums and percentages,
   and `config_hash`. Each helper documents its rule, so a caller can decide whether it fits.
+  `network_bands` does not take a network's schedule into account (not measured with an active
+  one).

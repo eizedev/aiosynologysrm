@@ -278,6 +278,8 @@ FLAG_KEYS = frozenset(
     }
 )
 
+# Numbers kept as they are, under these keys in every API. Generic names such as `id` are only
+# here because today's values are small counters (0, 1); check them again for a new API.
 NUMBER_KEYS = frozenset(
     {
         "15min_load",

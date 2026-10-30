@@ -6,6 +6,7 @@ import asyncio
 import ipaddress
 import json
 import logging
+import re
 import secrets
 from collections.abc import Awaitable, Callable, Mapping
 from functools import partial
@@ -183,14 +184,37 @@ def _is_ipv6(host: str) -> bool:
         return False
 
 
-def _without(value: Any, keys: frozenset[str]) -> Any:
-    """Return an answer without the given keys, at any depth (a read's ``drop``)."""
-    if not keys:
+# Words in a key name that mark a secret; checked on every key of a read that has a ``drop``.
+_SECRET_WORDS: Final = frozenset({"psk", "secret", "token", "pin", "credential", "credentials"})
+_KEY_WORDS: Final = re.compile(r"[^a-z0-9]+")
+
+
+def _is_secret(key: str, drop: frozenset[str]) -> bool:
+    """Whether a key is one a read drops: named in ``drop`` or named like a secret.
+
+    Any case. A word starting with ``pass`` or ``mail``, a secret word, or ``key`` as the last
+    word (``wpa_key``, not ``key_rotation``).
+    """
+    words = [w for w in _KEY_WORDS.split(key.lower()) if w]
+    return (
+        key.lower() in drop
+        or any(w.startswith(("pass", "mail")) or w in _SECRET_WORDS for w in words)
+        or (bool(words) and words[-1].endswith("key"))
+    )
+
+
+def _without(value: Any, drop: frozenset[str]) -> Any:
+    """Return an answer without the secrets of a read that has a ``drop``, at any depth."""
+    if not drop:
         return value
     if isinstance(value, Mapping):
-        return {k: _without(v, keys) for k, v in value.items() if k not in keys}
+        return {
+            k: _without(v, drop)
+            for k, v in value.items()
+            if not (isinstance(k, str) and _is_secret(k, drop))
+        }
     if isinstance(value, list):
-        return [_without(v, keys) for v in value]
+        return [_without(v, drop) for v in value]
     return value
 
 
@@ -633,7 +657,10 @@ class SrmClient:
             envelope = await self._post("entry.cgi", {**self._form(spec, version), "_sid": sid})
             if envelope["success"]:
                 self._session_failure = None
-                return _without(envelope.get("data"), spec.drop)
+                try:
+                    return _without(envelope.get("data"), spec.drop)
+                except RecursionError:
+                    raise SrmResponseError("Response nested too deeply") from None
             code = self._error_code(envelope)
             if code in _SESSION_ERRORS and session_logins < _SESSION_RETRIES:
                 _LOGGER.debug("Session ended (%s), logging in again", code)

@@ -37,8 +37,9 @@ uv run mypy                   # strict
   interpretation in models; derived values go into `helpers.py`.
 - **Secrets in an answer are dropped, not mirrored.** When SRM sends a key, password or mail
   address along with what a read is for (`SYNO.Wifi.Network.Setting` does), list those keys in the
-  spec's `drop`; the client removes them before `read()` returns. Record fixtures through the
-  library, so the raw files never hold them either.
+  spec's `drop`; the client removes them, and every key named like a secret, before `read()`
+  returns. Record such a fixture's raw file through `client.read()` (CONTRIBUTING.md), so it
+  never holds them either.
 - **Parsers never raise.** Use the converters in `_parse.py` (`to_int`, `to_str`, `to_bool`,
   `to_timedelta`, ...). Every exported model is fuzzed by `tests/test_robustness.py` automatically.
 - **Units only when verified** on a router, and then in the field's docstring, not its name.
